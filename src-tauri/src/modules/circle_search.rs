@@ -67,6 +67,7 @@ pub struct CircleSearchStatus {
     pub on_screen_trigger: bool,
     pub default_action: String,
     pub target_lang: String,
+    pub translate_mode: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -76,6 +77,7 @@ pub struct OverlayInitInfo {
     pub scale: f64,
     pub default_action: String,
     pub target_lang: String,
+    pub translate_mode: String,
     pub hotkey: String,
 }
 
@@ -557,6 +559,17 @@ fn send_ctrl_v() {
     }
 }
 
+fn open_browser_and_paste_clipboard(url: &str, clip_ok: bool) -> Result<(), String> {
+    browser::open_url(url)?;
+    if clip_ok {
+        std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_millis(3200));
+            send_ctrl_v();
+        });
+    }
+    Ok(())
+}
+
 async fn run_lens_search_impl(
     app: AppHandle,
     x: u32,
@@ -588,11 +601,7 @@ async fn run_lens_search_impl(
     // Direct POST to lens.google.com/v3/upload returns 403 even in Chrome.
     // So: image is already on the clipboard -> open the Lens home page -> Ctrl+V once it loads.
     let msg = if clip_ok {
-        browser::open_url("https://lens.google.com/")?;
-        std::thread::spawn(|| {
-            std::thread::sleep(Duration::from_millis(3200));
-            send_ctrl_v();
-        });
+        open_browser_and_paste_clipboard("https://lens.google.com/", true)?;
         "Opened Google Lens; pasting captured image".to_string()
     } else {
         browser::open_url(&format!("http://127.0.0.1:41780/lens-bridge?t={ts}"))?;
@@ -605,6 +614,55 @@ async fn run_lens_search_impl(
         clipboard_ready: clip_ok,
         url: bridge_path.to_string_lossy().to_string(),
         message: msg,
+    })
+}
+
+/// Copies the captured region (or full monitor) to the clipboard and opens Google Translate Images
+/// (`sl=auto&tl=...&op=images`) in the default browser with delayed Ctrl+V paste for any language.
+#[tauri::command]
+pub async fn google_translate_image(
+    app: AppHandle,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    target_lang: String,
+) -> Result<VisualSearchResult, String> {
+    let tl = if target_lang.trim().is_empty() {
+        "bn".to_string()
+    } else {
+        target_lang.trim().to_string()
+    };
+    let (_, _, cw, ch, bgra) = crop_or_full(x, y, width, height)?;
+
+    let (clip_ok, png_path) = tauri::async_runtime::spawn_blocking(move || {
+        let clip = capture::copy_bgra_to_clipboard(cw, ch, &bgra);
+        let png = capture::encode_png(cw, ch, &bgra)?;
+        let path = std::env::temp_dir().join("nexus_translate_image.png");
+        std::fs::write(&path, &png)
+            .map_err(|e| format!("Failed to write nexus_translate_image.png: {e}"))?;
+        Ok::<(bool, std::path::PathBuf), String>((clip, path))
+    })
+    .await
+    .map_err(|e| format!("Image prepare worker failed: {e}"))??;
+
+    let url = format!(
+        "https://translate.google.com/?sl=auto&tl={}&op=images",
+        url_encode_query(&tl)
+    );
+    hide_and_destroy_overlay(&app);
+    open_browser_and_paste_clipboard(&url, clip_ok)?;
+
+    Ok(VisualSearchResult {
+        ok: true,
+        opened_direct: true,
+        clipboard_ready: clip_ok,
+        url: png_path.to_string_lossy().to_string(),
+        message: if clip_ok {
+            "Opened Google Translate Images; pasting captured image".to_string()
+        } else {
+            "Opened Google Translate Images; upload saved capture".to_string()
+        },
     })
 }
 
@@ -644,6 +702,7 @@ pub fn overlay_ready(app: AppHandle) -> Result<OverlayInitInfo, String> {
         scale,
         default_action: s.circle_search.default_action.clone(),
         target_lang: s.circle_search.target_lang.clone(),
+        translate_mode: s.circle_search.translate_mode.clone(),
         hotkey: s.circle_search.hotkey.clone(),
     })
 }
@@ -999,6 +1058,14 @@ async fn translate_chunk(
     (out, detected, first_err)
 }
 
+fn is_ocr_noise_line(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || !trimmed.chars().any(|c| c.is_alphanumeric()) {
+        return true;
+    }
+    trimmed.chars().count() == 1 && trimmed.chars().next().is_some_and(|c| c.is_ascii())
+}
+
 #[tauri::command]
 pub async fn translate_selection(
     x: u32,
@@ -1035,12 +1102,21 @@ pub async fn translate_selection(
 
     let client = translate_http_client()?;
 
+    let mut active_boxes: Vec<&ocr::OcrLineBox> = ocr_out
+        .line_boxes
+        .iter()
+        .filter(|item| !is_ocr_noise_line(&item.text))
+        .collect();
+    if active_boxes.is_empty() {
+        active_boxes = ocr_out.line_boxes.iter().collect();
+    }
+
     // Normalize line breaks inside single OCR lines so chunk splitting on '\n' stays exact.
     let mut unique_texts: Vec<String> = Vec::new();
     let mut index_map: HashMap<String, usize> = HashMap::new();
-    let mut line_indices: Vec<usize> = Vec::with_capacity(ocr_out.line_boxes.len());
+    let mut line_indices: Vec<usize> = Vec::with_capacity(active_boxes.len());
 
-    for item in &ocr_out.line_boxes {
+    for item in &active_boxes {
         let normalized = item.text.replace(['\r', '\n'], " ").trim().to_string();
         let key = if normalized.is_empty() {
             item.text.clone()
@@ -1085,14 +1161,14 @@ pub async fn translate_selection(
         });
     }
 
-    let mut lines = Vec::with_capacity(ocr_out.line_boxes.len());
-    for (box_item, &u_idx) in ocr_out.line_boxes.iter().zip(line_indices.iter()) {
+    let mut raw_lines = Vec::with_capacity(active_boxes.len());
+    for (box_item, &u_idx) in active_boxes.iter().zip(line_indices.iter()) {
         let translated_text = translated_unique[u_idx]
             .as_deref()
             .filter(|s| !s.is_empty())
             .unwrap_or(&box_item.text)
             .to_string();
-        lines.push(TranslatedLine {
+        raw_lines.push(TranslatedLine {
             source_text: box_item.text.clone(),
             translated_text,
             x: box_item.x,
@@ -1103,6 +1179,19 @@ pub async fn translate_selection(
             fg_color: box_item.fg_color.clone(),
         });
     }
+
+    let changed_count = raw_lines
+        .iter()
+        .filter(|l| !l.translated_text.trim().eq_ignore_ascii_case(l.source_text.trim()))
+        .count();
+    let lines: Vec<TranslatedLine> = if changed_count > 0 {
+        raw_lines
+            .into_iter()
+            .filter(|l| !l.translated_text.trim().eq_ignore_ascii_case(l.source_text.trim()))
+            .collect()
+    } else {
+        raw_lines
+    };
 
     let translated_full = lines
         .iter()
@@ -1365,6 +1454,7 @@ pub fn get_circle_search_status() -> CircleSearchStatus {
         on_screen_trigger: s.circle_search.on_screen_trigger,
         default_action: s.circle_search.default_action,
         target_lang: s.circle_search.target_lang,
+        translate_mode: s.circle_search.translate_mode,
     }
 }
 
@@ -1435,5 +1525,16 @@ mod tests {
         assert!(!needs_lowercase_retry("DOWNLOAD", "ডাউনলোড"));
         assert!(!needs_lowercase_retry("Download", "Download"));
         assert!(!needs_lowercase_retry("OK", "OK"));
+    }
+
+    #[test]
+    fn filters_ocr_noise_lines() {
+        assert!(is_ocr_noise_line(""));
+        assert!(is_ocr_noise_line("..."));
+        assert!(is_ocr_noise_line("O"));
+        assert!(is_ocr_noise_line("|"));
+        assert!(!is_ocr_noise_line("1d"));
+        assert!(!is_ocr_noise_line("Chrome"));
+        assert!(!is_ocr_noise_line("This PC"));
     }
 }

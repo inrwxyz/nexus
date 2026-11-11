@@ -77,7 +77,8 @@ function buildPlaceholderPages() {
         `<div class="row"><div class="row-left"><div class="ico">${ICO_PILL}</div><div class="row-text"><div class="row-label">On-Screen Trigger Pill</div><div class="row-sub">Show a tiny lower-right icon handle to launch Circle to Search</div></div></div><div class="row-ctrl"><label class="switch"><input type="checkbox" id="toggle-cs-pill" /><span class="slider"></span></label></div></div>` +
         `<div class="row"><div class="row-left"><div class="ico">${ICO_KEY}</div><div class="row-text"><div class="row-label">Global Hotkey</div><div class="row-sub" id="cs-hotkey-sub">Shortcut to freeze screen and draw anywhere</div></div></div><div class="row-ctrl row-ctrl-inline"><span class="badge" id="cs-hotkey-badge"><i></i>Ctrl+Shift+S</span><button id="btn-cs-hotkey" class="btn" type="button">Record Key</button></div></div>` +
         `<div class="row"><div class="row-left"><div class="ico">${ICO_ACT}</div><div class="row-text"><div class="row-label">Default Action</div><div class="row-sub">What runs right after circling a region</div></div></div><div class="row-ctrl"><div class="dd" data-dd data-select="sel-cs-action" data-value="dd-cs-action-value"><button class="dd-trigger field" type="button" aria-haspopup="listbox"><span class="dd-value" id="dd-cs-action-value">Show Options</span><svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button><div class="dd-menu" role="listbox"></div></div><select id="sel-cs-action" class="sr-only" tabindex="-1" aria-hidden="true"><option value="ask">Show Options  (Default)</option><option value="ocr">Extract Text (OCR)</option><option value="translate">Translate Selection</option><option value="lens">Google Lens</option></select></div></div>` +
-        `<div class="row"><div class="row-left"><div class="ico">${ICO_LANG}</div><div class="row-text"><div class="row-label">Default Target Language</div><div class="row-sub">Used automatically by the overlay Translate tool</div></div></div><div class="row-ctrl"><div class="dd" data-dd data-select="sel-cs-lang" data-value="dd-cs-lang-value"><button class="dd-trigger field" type="button" aria-haspopup="listbox"><span class="dd-value" id="dd-cs-lang-value">Bengali</span><svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button><div class="dd-menu" role="listbox"></div></div><select id="sel-cs-lang" class="sr-only" tabindex="-1" aria-hidden="true"><option value="bn">Bengali  (Default)</option><option value="en">English</option><option value="hi">Hindi</option><option value="es">Spanish</option><option value="ja">Japanese</option><option value="fr">French</option><option value="de">German</option><option value="ar">Arabic</option><option value="ko">Korean</option><option value="zh-CN">Chinese</option><option value="pt">Portuguese</option><option value="ru">Russian</option></select></div></div>` +
+        `<div class="row"><div class="row-left"><div class="ico">${ICO_LANG}</div><div class="row-text"><div class="row-label">Default Target Language</div><div class="row-sub">Used automatically by both In-Place and Google Translate Web</div></div></div><div class="row-ctrl"><div class="dd" data-dd data-select="sel-cs-lang" data-value="dd-cs-lang-value"><button class="dd-trigger field" type="button" aria-haspopup="listbox"><span class="dd-value" id="dd-cs-lang-value">Bengali</span><svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button><div class="dd-menu" role="listbox"></div></div><select id="sel-cs-lang" class="sr-only" tabindex="-1" aria-hidden="true"><option value="bn">Bengali  (Default)</option><option value="en">English</option><option value="hi">Hindi</option><option value="es">Spanish</option><option value="ja">Japanese</option><option value="fr">French</option><option value="de">German</option><option value="ar">Arabic</option><option value="ko">Korean</option><option value="zh-CN">Chinese</option><option value="pt">Portuguese</option><option value="ru">Russian</option></select></div></div>` +
+        `<div class="row"><div class="row-left"><div class="ico">${ICO_ACT}</div><div class="row-text"><div class="row-label">Translation Mode</div><div class="row-sub">In-Place overlay (fast) or Google Translate Web for all languages</div></div></div><div class="row-ctrl"><div class="dd" data-dd data-select="sel-cs-trmode" data-value="dd-cs-trmode-value"><button class="dd-trigger field" type="button" aria-haspopup="listbox"><span class="dd-value" id="dd-cs-trmode-value">In-Place Screen Overlay</span><svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button><div class="dd-menu" role="listbox"></div></div><select id="sel-cs-trmode" class="sr-only" tabindex="-1" aria-hidden="true"><option value="in_place">In-Place Screen Overlay  (Default)</option><option value="google_web">Google Translate Web  (All Languages)</option></select></div></div>` +
         `</div>`);
     } else {
       mk('overview', '01', m.info.title, m.info.blurb,
@@ -251,12 +252,13 @@ $('#wake-prev').addEventListener('click', () => cycleWake(-1));
 $('#wake-next').addEventListener('click', () => cycleWake(1));
 
 // ── Circle to Search state & sync ──────────────────────────────────────────
-const csState = { on_screen_trigger: false, hotkey: 'Ctrl+Shift+S', default_action: 'ask', target_lang: 'bn' };
+const csState = { on_screen_trigger: false, hotkey: 'Ctrl+Shift+S', default_action: 'ask', target_lang: 'bn', translate_mode: 'in_place' };
 function syncCircleSearchUI() {
-  const pill = $('#toggle-cs-pill'), selAct = $('#sel-cs-action'), selLang = $('#sel-cs-lang');
+  const pill = $('#toggle-cs-pill'), selAct = $('#sel-cs-action'), selLang = $('#sel-cs-lang'), selTrMode = $('#sel-cs-trmode');
   if (pill) pill.checked = !!csState.on_screen_trigger;
   if (selAct) selAct.value = csState.default_action || 'ask';
   if (selLang) selLang.value = csState.target_lang || 'bn';
+  if (selTrMode) selTrMode.value = csState.translate_mode || 'in_place';
   const badge = $('#cs-hotkey-badge');
   if (badge) badge.innerHTML = `<i></i>${csState.hotkey || 'Ctrl+Shift+S'}`;
 }
@@ -313,7 +315,7 @@ function formatKeyEventCombo(e) {
   return { combo: parts.join('+') };
 }
 function wireCircleSearchControls() {
-  const pill = $('#toggle-cs-pill'), btnKey = $('#btn-cs-hotkey'), selAct = $('#sel-cs-action'), selLang = $('#sel-cs-lang'), btnLaunch = $('#btn-cs-launch');
+  const pill = $('#toggle-cs-pill'), btnKey = $('#btn-cs-hotkey'), selAct = $('#sel-cs-action'), selLang = $('#sel-cs-lang'), selTrMode = $('#sel-cs-trmode'), btnLaunch = $('#btn-cs-launch');
   if (pill) pill.addEventListener('change', () => {
     csState.on_screen_trigger = pill.checked;
     saveSettings(`On-Screen Trigger Pill ${pill.checked ? 'on' : 'off'}`);
@@ -327,6 +329,11 @@ function wireCircleSearchControls() {
     csState.target_lang = selLang.value;
     syncUI();
     saveSettings(`Target language: ${selLang.selectedOptions[0] ? wakeLabel(selLang.selectedOptions[0]) : selLang.value}`);
+  });
+  if (selTrMode) selTrMode.addEventListener('change', () => {
+    csState.translate_mode = selTrMode.value;
+    syncUI();
+    saveSettings(`Translation mode: ${selTrMode.selectedOptions[0] ? wakeLabel(selTrMode.selectedOptions[0]) : selTrMode.value}`);
   });
   if (btnLaunch) btnLaunch.addEventListener('click', async () => {
     if (T && T.core) {
@@ -396,6 +403,7 @@ async function loadSettings() {
         if (data.circle_search.hotkey) csState.hotkey = data.circle_search.hotkey;
         if (data.circle_search.default_action) csState.default_action = data.circle_search.default_action;
         if (data.circle_search.target_lang) csState.target_lang = data.circle_search.target_lang;
+        if (data.circle_search.translate_mode) csState.translate_mode = data.circle_search.translate_mode;
       }
     }
   } catch (e) { console.log('Using default settings'); }

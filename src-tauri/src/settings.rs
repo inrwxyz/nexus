@@ -63,6 +63,10 @@ fn default_cs_lang() -> String {
     "bn".to_string()
 }
 
+fn default_cs_translate_mode() -> String {
+    "in_place".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CircleSearchConfig {
     #[serde(default)]
@@ -73,6 +77,8 @@ pub struct CircleSearchConfig {
     pub default_action: String,
     #[serde(default = "default_cs_lang")]
     pub target_lang: String,
+    #[serde(default = "default_cs_translate_mode")]
+    pub translate_mode: String,
 }
 
 impl Default for CircleSearchConfig {
@@ -82,6 +88,7 @@ impl Default for CircleSearchConfig {
             hotkey: default_cs_hotkey(),
             default_action: default_cs_action(),
             target_lang: default_cs_lang(),
+            translate_mode: default_cs_translate_mode(),
         }
     }
 }
@@ -156,6 +163,12 @@ impl AuraSettings {
         }
         if self.circle_search.target_lang.trim().is_empty() {
             self.circle_search.target_lang = default_cs_lang();
+        }
+        if !matches!(
+            self.circle_search.translate_mode.as_str(),
+            "in_place" | "google_web"
+        ) {
+            self.circle_search.translate_mode = default_cs_translate_mode();
         }
     }
 }
@@ -285,5 +298,13 @@ mod tests {
 
         // Opening Nexus manually runs all enabled sections
         assert!(s.module_should_run_now_with("voice", true, true));
+
+        assert_eq!(s.circle_search.translate_mode, "in_place");
+        s.circle_search.translate_mode = "invalid_mode".to_string();
+        s.normalize();
+        assert_eq!(s.circle_search.translate_mode, "in_place");
+        s.circle_search.translate_mode = "google_web".to_string();
+        s.normalize();
+        assert_eq!(s.circle_search.translate_mode, "google_web");
     }
 }

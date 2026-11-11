@@ -3991,6 +3991,7 @@ fn main() {
             modules::circle_search::lens_visual_search,
             modules::circle_search::visual_search_selection,
             modules::circle_search::translate_selection,
+            modules::circle_search::google_translate_image,
             modules::circle_search::recognize_desktop_music,
             modules::circle_search::copy_circle_text,
             modules::circle_search::search_circle_text,

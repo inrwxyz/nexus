@@ -51,8 +51,8 @@
     .tr-box {
       position: fixed; pointer-events: auto; cursor: pointer;
       display: flex; align-items: center;
-      padding: 2px 3px; border-radius: 5px;
-      line-height: 1.15; font-weight: 500;
+      padding: 2px 5px; border-radius: 6px;
+      line-height: 1.26; font-weight: 500;
       opacity: 1;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -107,22 +107,35 @@
     }
     .tool-tip { font-size: 11px; font-weight: 700; letter-spacing: -.02em; }
 
-    /* Tiny sleek inline Language Selector Pill (6px gap beside 文A) */
+    /* Tiny sleek inline Language Selector + Google Translate Web Pill (6px gap beside 文A) */
     .lang-pill {
       position: fixed; z-index: 16; display: none; align-items: center; gap: 4px;
-      height: 30px; padding: 0 11px; border-radius: 999px;
+      height: 30px; padding: 0 4px 0 0; border-radius: 999px;
       background: rgba(15, 19, 25, 0.94); backdrop-filter: blur(22px);
       border: 1px solid rgba(6, 182, 212, 0.48);
       box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
       color: #67e8f9; font-size: 11.5px; font-weight: 600; letter-spacing: .04em;
-      cursor: pointer; white-space: nowrap;
+      white-space: nowrap;
     }
     .lang-pill.open { display: inline-flex; }
-    .lang-pill:hover { background: rgba(6, 182, 212, 0.22); }
-    .lang-pill select {
+    .lang-select-wrap {
+      position: relative; display: inline-flex; align-items: center; height: 100%;
+      padding: 0 8px 0 11px; border-radius: 999px; cursor: pointer;
+    }
+    .lang-select-wrap:hover { background: rgba(6, 182, 212, 0.16); }
+    .lang-select-wrap select {
       position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;
     }
-    .lang-pill select option { background: #0f1319; color: #f4f7fb; }
+    .lang-select-wrap select option { background: #0f1319; color: #f4f7fb; }
+    .lang-sep { width: 1px; height: 14px; background: rgba(255, 255, 255, 0.16); }
+    .lang-web-btn {
+      height: 22px; padding: 0 9px; border-radius: 999px; border: 0;
+      background: rgba(6, 182, 212, 0.16); color: #bae6fd;
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 3px;
+      transition: background .14s, color .14s;
+    }
+    .lang-web-btn:hover { background: rgba(6, 182, 212, 0.34); color: #fff; }
 
     /* Tiny transient chip beside an active rail button (Lens / Music status) */
     .mini-chip {
@@ -247,23 +260,27 @@
     </div>
   </div>
 
-  <!-- Tiny sleek Language Selector Pill (6px gap next to 文A) -->
-  <div class="lang-pill" id="lang-pill" title="Target translation language">
-    <span id="lang-badge">BN ▾</span>
-    <select id="pop-lang" aria-label="Target Language">
-      <option value="bn">Bengali (bn)</option>
-      <option value="en">English (en)</option>
-      <option value="hi">Hindi (hi)</option>
-      <option value="es">Spanish (es)</option>
-      <option value="ja">Japanese (ja)</option>
-      <option value="fr">French (fr)</option>
-      <option value="de">German (de)</option>
-      <option value="ar">Arabic (ar)</option>
-      <option value="ko">Korean (ko)</option>
-      <option value="zh-CN">Chinese (zh-CN)</option>
-      <option value="pt">Portuguese (pt)</option>
-      <option value="ru">Russian (ru)</option>
-    </select>
+  <!-- Tiny sleek Language Selector + Google Translate Web Pill (6px gap next to 文A) -->
+  <div class="lang-pill" id="lang-pill">
+    <div class="lang-select-wrap" title="Target translation language">
+      <span id="lang-badge">BN ▾</span>
+      <select id="pop-lang" aria-label="Target Language">
+        <option value="bn">Bengali (bn)</option>
+        <option value="en">English (en)</option>
+        <option value="hi">Hindi (hi)</option>
+        <option value="es">Spanish (es)</option>
+        <option value="ja">Japanese (ja)</option>
+        <option value="fr">French (fr)</option>
+        <option value="de">German (de)</option>
+        <option value="ar">Arabic (ar)</option>
+        <option value="ko">Korean (ko)</option>
+        <option value="zh-CN">Chinese (zh-CN)</option>
+        <option value="pt">Portuguese (pt)</option>
+        <option value="ru">Russian (ru)</option>
+      </select>
+    </div>
+    <span class="lang-sep"></span>
+    <button type="button" class="lang-web-btn" id="btn-gtranslate" title="Open in Google Translate Images (auto-detects all languages)">G-Translate ↗</button>
   </div>
 
   <!-- Tiny transient status pill beside active rail icon (Lens / Music) -->
@@ -280,6 +297,7 @@
     </button>
     <button class="ask-btn" id="ask-ocr" type="button"><span>Copy Text</span></button>
     <button class="ask-btn" id="ask-translate" type="button"><span>Translate</span></button>
+    <button class="ask-btn" id="ask-gtranslate" type="button" title="Translate image in Google Translate (all languages)"><span>G-Translate ↗</span></button>
     <button class="ask-btn icon-only" id="ask-redraw" type="button" title="Redraw">✕</button>
   </div>
 
@@ -315,6 +333,7 @@
     const langPill = document.getElementById('lang-pill');
     const langBadge = document.getElementById('lang-badge');
     const popLang = document.getElementById('pop-lang');
+    const btnGTranslate = document.getElementById('btn-gtranslate');
     const miniChip = document.getElementById('mini-chip');
     const miniChipText = document.getElementById('mini-chip-text');
 
@@ -330,10 +349,11 @@
     const askLens = document.getElementById('ask-lens');
     const askOcr = document.getElementById('ask-ocr');
     const askTranslate = document.getElementById('ask-translate');
+    const askGTranslate = document.getElementById('ask-gtranslate');
     const askRedraw = document.getElementById('ask-redraw');
 
     let frameUrl = null;
-    let initInfo = { width: window.innerWidth, height: window.innerHeight, default_action: 'ask', target_lang: 'bn' };
+    let initInfo = { width: window.innerWidth, height: window.innerHeight, default_action: 'ask', target_lang: 'bn', translate_mode: 'in_place' };
     let activeTool = 'ask'; // 'ask' | 'lasso' | 'translate' | 'ocr'
     let drawing = false;
     let points = [];
@@ -437,8 +457,13 @@
         langBadge.textContent = shortLangLabel(popLang.value);
         langPill.classList.add('open');
         positionBesideButton(langPill, toolTranslate);
-        // Immediately trigger full-screen in-place translation automatically
-        runTranslate({ x: 0, y: 0, width: 0, height: 0 });
+        if (initInfo.translate_mode === 'google_web') {
+          clearInPlaceTranslation();
+          showToast('Draw area for Google Translate, or click G-Translate ↗ for full screen', 2800);
+        } else {
+          // Immediately trigger full-screen in-place translation automatically
+          runTranslate({ x: 0, y: 0, width: 0, height: 0 });
+        }
       } else {
         langPill.classList.remove('open');
         clearInPlaceTranslation();
@@ -453,9 +478,14 @@
     popLang.addEventListener('change', () => {
       langBadge.textContent = shortLangLabel(popLang.value);
       positionBesideButton(langPill, toolTranslate);
-      if (activeTool === 'translate') {
+      if (activeTool === 'translate' && initInfo.translate_mode !== 'google_web') {
         runTranslate(lastTranslatePhys || { x: 0, y: 0, width: 0, height: 0 });
       }
+    });
+
+    btnGTranslate.addEventListener('click', async () => {
+      const target = activePhys || lastTranslatePhys || { x: 0, y: 0, width: 0, height: 0 };
+      await launchGoogleTranslateWeb(target);
     });
 
     toolMusic.addEventListener('click', async () => {
@@ -616,12 +646,12 @@
       const sy = window.innerHeight / Math.max(1, initInfo.height);
 
       for (const item of lines) {
-        // 1px-3px padded solid surface shield so original words never bleed through
-        const cssX = Math.max(0, item.x * sx - 2);
-        const cssY = Math.max(0, item.y * sy - 2);
-        const cssW = Math.max(18, item.width * sx + 4);
-        const cssH = Math.max(15, item.height * sy + 4);
-        const maxW = Math.max(cssW * 1.5, Math.min(window.innerWidth - cssX - 10, cssW + 96));
+        // 3px-4px padded solid surface shield covers shadowed UI & desktop icon outlines cleanly
+        const cssX = Math.max(0, item.x * sx - 4);
+        const cssY = Math.max(0, item.y * sy - 3);
+        const cssW = Math.max(20, item.width * sx + 8);
+        const cssH = Math.max(18, item.height * sy + 6);
+        const maxW = Math.max(cssW * 1.65, Math.min(window.innerWidth - cssX - 8, cssW + 120));
 
         const el = document.createElement('div');
         el.className = 'tr-box';
@@ -635,12 +665,12 @@
         el.style.background = item.bg_color || 'rgb(15, 19, 25)';
         el.style.color = item.fg_color || '#f8fafc';
 
-        let fs = Math.max(10.5, Math.min(44, (item.height * sy) * 0.78));
+        let fs = Math.max(10.0, Math.min(44, (item.height * sy) * 0.78));
         el.style.fontSize = `${fs.toFixed(1)}px`;
         trLayer.appendChild(el);
 
         if (el.scrollWidth > maxW + 1) {
-          fs = Math.max(9.0, fs * (maxW / el.scrollWidth));
+          fs = Math.max(8.5, fs * (maxW / el.scrollWidth));
           el.style.fontSize = `${fs.toFixed(1)}px`;
         }
 
@@ -670,7 +700,10 @@
         if (reqSeq !== translateReqSeq || closing) return;
         if (res.error || !res.ok || !res.lines || res.lines.length === 0) {
           clearInPlaceTranslation();
-          showToast(res.error || 'No readable text found', 3200);
+          const msg = (!res.error || res.error.includes('No readable text'))
+            ? 'No local OCR text — click G-Translate ↗ for all languages'
+            : res.error;
+          showToast(msg, 3400);
           return;
         }
         renderInPlaceLines(res.lines);
@@ -684,6 +717,23 @@
           langBadge.textContent = shortLangLabel(popLang.value);
           positionBesideButton(langPill, toolTranslate);
         }
+      }
+    }
+
+    async function launchGoogleTranslateWeb(phys) {
+      const p = phys || { x: 0, y: 0, width: 0, height: 0 };
+      const tl = popLang.value || 'bn';
+      toolTranslate.classList.add('busy');
+      showChip(toolTranslate, 'Opening Google Translate…');
+      try {
+        await T.core.invoke('google_translate_image', {
+          x: p.x, y: p.y, width: p.width, height: p.height, targetLang: tl
+        });
+        cleanupResources();
+      } catch (e) {
+        hideChip();
+        toolTranslate.classList.remove('busy');
+        showToast(`Google Translate failed: ${e}`, 3400);
       }
     }
 
@@ -761,7 +811,11 @@
       renderScrim(box, []);
 
       if (activeTool === 'translate') {
-        await runTranslate(activePhys);
+        if (initInfo.translate_mode === 'google_web') {
+          await launchGoogleTranslateWeb(activePhys);
+        } else {
+          await runTranslate(activePhys);
+        }
       } else if (activeTool === 'ocr') {
         positionCard(box);
         await runOcr(activePhys);
@@ -789,12 +843,21 @@
     askTranslate.addEventListener('click', async () => {
       if (!activePhys) return;
       askBar.classList.remove('open');
+      if (initInfo.translate_mode === 'google_web') {
+        await launchGoogleTranslateWeb(activePhys);
+        return;
+      }
       activeTool = 'translate';
       document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === 'translate'));
       langBadge.textContent = shortLangLabel(popLang.value);
       langPill.classList.add('open');
       positionBesideButton(langPill, toolTranslate);
       await runTranslate(activePhys);
+    });
+    askGTranslate.addEventListener('click', async () => {
+      if (!activePhys) return;
+      askBar.classList.remove('open');
+      await launchGoogleTranslateWeb(activePhys);
     });
     askRedraw.addEventListener('click', resetSelection);
 

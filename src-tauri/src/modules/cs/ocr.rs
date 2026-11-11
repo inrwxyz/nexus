@@ -51,9 +51,10 @@ impl Drop for ComGuard {
 /// Upscales captures and adds an edge-replicated quiet border so Windows.Media.Ocr detects tight crops
 /// and small UI words sharply. Returns (scale_factor, pad_px, out_w, out_h, bgra_bytes).
 fn prepare_ocr_buffer(w: u32, h: u32, bgra: &[u8]) -> (u32, u32, u32, u32, Vec<u8>) {
-    let scale = if w < 90 || h < 36 {
+    const MAX_OCR_DIM: u32 = 5800;
+    let scale = if (w < 160 || h < 60) && w * 3 <= MAX_OCR_DIM && h * 3 <= MAX_OCR_DIM {
         3
-    } else if w * 2 <= 4096 && h * 2 <= 4096 {
+    } else if w * 2 <= MAX_OCR_DIM && h * 2 <= MAX_OCR_DIM {
         2
     } else {
         1
@@ -61,7 +62,7 @@ fn prepare_ocr_buffer(w: u32, h: u32, bgra: &[u8]) -> (u32, u32, u32, u32, Vec<u
 
     let s_w = w.saturating_mul(scale);
     let s_h = h.saturating_mul(scale);
-    let pad = if w > 0 && h > 0 && s_w + 16 <= 4096 && s_h + 16 <= 4096 {
+    let pad = if w > 0 && h > 0 && s_w + 16 <= MAX_OCR_DIM && s_h + 16 <= MAX_OCR_DIM {
         8
     } else {
         0
@@ -124,10 +125,10 @@ fn sample_box_colors(w: u32, h: u32, bgra: &[u8], lx: f32, ly: f32, lw: f32, lh:
         return ("rgb(15, 19, 25)".to_string(), "#f8fafc".to_string());
     }
 
-    let x0 = (lx.floor() as i32 - 2).clamp(0, w as i32 - 1);
-    let y0 = (ly.floor() as i32 - 2).clamp(0, h as i32 - 1);
-    let x1 = ((lx + lw).ceil() as i32 + 2).clamp(0, w as i32 - 1);
-    let y1 = ((ly + lh).ceil() as i32 + 2).clamp(0, h as i32 - 1);
+    let x0 = (lx.floor() as i32 - 4).clamp(0, w as i32 - 1);
+    let y0 = (ly.floor() as i32 - 4).clamp(0, h as i32 - 1);
+    let x1 = ((lx + lw).ceil() as i32 + 4).clamp(0, w as i32 - 1);
+    let y1 = ((ly + lh).ceil() as i32 + 4).clamp(0, h as i32 - 1);
 
     let mut rs = Vec::with_capacity(20);
     let mut gs = Vec::with_capacity(20);
@@ -173,6 +174,217 @@ fn sample_box_colors(w: u32, h: u32, bgra: &[u8], lx: f32, ly: f32, lw: f32, lh:
     }
 }
 
+/// Builds an inverted high-contrast black-on-white copy when dark pixels are present so Windows OCR
+/// reads faint muted-grey text in dark-mode UIs cleanly. Returns `None` if image has almost no dark areas.
+fn build_dark_rescue_bgra(bgra: &[u8]) -> Option<Vec<u8>> {
+    let px_count = bgra.len() / 4;
+    if px_count == 0 {
+        return None;
+    }
+
+    let step = (px_count / 2500).max(1);
+    let mut dark_samples = 0usize;
+    let mut total_samples = 0usize;
+    for px in bgra.chunks_exact(4).step_by(step) {
+        let luma = (77u32 * px[2] as u32 + 150u32 * px[1] as u32 + 29u32 * px[0] as u32) >> 8;
+        if luma < 105 {
+            dark_samples += 1;
+        }
+        total_samples += 1;
+    }
+
+    if total_samples == 0 || dark_samples * 100 < total_samples * 10 {
+        return None;
+    }
+
+    let mut out = vec![255u8; bgra.len()];
+    for (src, dst) in bgra.chunks_exact(4).zip(out.chunks_exact_mut(4)) {
+        let luma = (77u32 * src[2] as u32 + 150u32 * src[1] as u32 + 29u32 * src[0] as u32) >> 8;
+        let v = if luma <= 45 {
+            255u8
+        } else if luma >= 155 {
+            0u8
+        } else {
+            (255 - ((luma - 45) * 255 / 110)) as u8
+        };
+        dst[0] = v;
+        dst[1] = v;
+        dst[2] = v;
+        dst[3] = 255;
+    }
+    Some(out)
+}
+
+fn boxes_overlap(a: &OcrLineBox, b: &OcrLineBox) -> bool {
+    let ax2 = a.x + a.width;
+    let ay2 = a.y + a.height;
+    let bx2 = b.x + b.width;
+    let by2 = b.y + b.height;
+
+    let ix = (ax2.min(bx2) - a.x.max(b.x)).max(0.0);
+    let iy = (ay2.min(by2) - a.y.max(b.y)).max(0.0);
+    if ix <= 0.0 || iy <= 0.0 {
+        return false;
+    }
+
+    let inter = ix * iy;
+    let area_a = (a.width * a.height).max(1.0);
+    let area_b = (b.width * b.height).max(1.0);
+    inter > area_a.min(area_b) * 0.28
+}
+
+fn collect_ocr_engines() -> Result<Vec<OcrEngine>, String> {
+    let mut engines = Vec::new();
+    let mut seen_tags: Vec<String> = Vec::new();
+
+    if let Ok(primary) = OcrEngine::TryCreateFromUserProfileLanguages().or_else(|_| {
+        let lang = Language::CreateLanguage(&HSTRING::from("en-US"))?;
+        OcrEngine::TryCreateFromLanguage(&lang)
+    }) {
+        let tag = primary
+            .RecognizerLanguage()
+            .and_then(|l| l.LanguageTag())
+            .map(|t| t.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if !tag.is_empty() {
+            seen_tags.push(tag);
+        }
+        engines.push(primary);
+    }
+
+    // Also probe distinct non-English script packs installed on Windows (e.g. hi-IN, ja-JP, zh-CN, ar-SA)
+    if let Ok(langs) = OcrEngine::AvailableRecognizerLanguages() {
+        let count = langs.Size().unwrap_or(0);
+        for i in 0..count {
+            if engines.len() >= 4 {
+                break;
+            }
+            if let Ok(lang) = langs.GetAt(i) {
+                let tag = lang
+                    .LanguageTag()
+                    .map(|t| t.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                let primary_sub = tag.split('-').next().unwrap_or("");
+                let already_same_family = seen_tags
+                    .iter()
+                    .any(|s| s == &tag || s.split('-').next().unwrap_or("") == primary_sub);
+                if !already_same_family {
+                    if let Ok(eng) = OcrEngine::TryCreateFromLanguage(&lang) {
+                        seen_tags.push(tag);
+                        engines.push(eng);
+                    }
+                }
+            }
+        }
+    }
+
+    if engines.is_empty() {
+        return Err(
+            "Windows OCR engine unavailable (check Windows Language OCR pack)".to_string(),
+        );
+    }
+    Ok(engines)
+}
+
+fn build_software_bitmap(ow: u32, oh: u32, buf: &[u8]) -> Result<SoftwareBitmap, String> {
+    let ibuf = CryptographicBuffer::CreateFromByteArray(buf)
+        .map_err(|e| format!("Failed to prepare OCR buffer: {e}"))?;
+    SoftwareBitmap::CreateCopyFromBuffer(
+        &ibuf,
+        BitmapPixelFormat::Bgra8,
+        ow as i32,
+        oh as i32,
+    )
+    .map_err(|e| format!("Failed to build SoftwareBitmap: {e}"))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_ocr_with_engine(
+    engine: &OcrEngine,
+    bitmap: &SoftwareBitmap,
+    scale_f: f32,
+    pad_f: f32,
+    orig_w: u32,
+    orig_h: u32,
+    orig_bgra: &[u8],
+    origin_x: u32,
+    origin_y: u32,
+) -> Result<Vec<OcrLineBox>, String> {
+    let op = engine
+        .RecognizeAsync(bitmap)
+        .map_err(|e| format!("OCR recognition start failed: {e}"))?;
+    let res = op
+        .get()
+        .map_err(|e| format!("OCR recognition failed: {e}"))?;
+
+    let mut out = Vec::new();
+    let Ok(ocr_lines) = res.Lines() else {
+        return Ok(out);
+    };
+    let count = ocr_lines.Size().unwrap_or(0);
+    for i in 0..count {
+        let Ok(line) = ocr_lines.GetAt(i) else {
+            continue;
+        };
+        let s = line
+            .Text()
+            .map(|t| t.to_string_lossy().trim().to_string())
+            .unwrap_or_default();
+        if s.is_empty() {
+            continue;
+        }
+
+        let mut min_x = f32::INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+
+        if let Ok(words) = line.Words() {
+            let wc = words.Size().unwrap_or(0);
+            for wi in 0..wc {
+                if let Ok(word) = words.GetAt(wi) {
+                    if let Ok(rect) = word.BoundingRect() {
+                        min_x = min_x.min(rect.X);
+                        min_y = min_y.min(rect.Y);
+                        max_x = max_x.max(rect.X + rect.Width);
+                        max_y = max_y.max(rect.Y + rect.Height);
+                    }
+                }
+            }
+        }
+
+        let (lx, ly, lw, lh) = if min_x.is_finite() && max_x > min_x && max_y > min_y {
+            let x0 = ((min_x - pad_f) / scale_f).clamp(0.0, orig_w as f32);
+            let y0 = ((min_y - pad_f) / scale_f).clamp(0.0, orig_h as f32);
+            let x1 = ((max_x - pad_f) / scale_f).clamp(x0 + 1.0, orig_w as f32);
+            let y1 = ((max_y - pad_f) / scale_f).clamp(y0 + 1.0, orig_h as f32);
+            (x0, y0, x1 - x0, y1 - y0)
+        } else {
+            (0.0, 0.0, orig_w as f32, 20.0)
+        };
+
+        let (bg_color, fg_color) = sample_box_colors(orig_w, orig_h, orig_bgra, lx, ly, lw, lh);
+        out.push(OcrLineBox {
+            text: s,
+            x: origin_x as f32 + lx,
+            y: origin_y as f32 + ly,
+            width: lw,
+            height: lh,
+            bg_color,
+            fg_color,
+        });
+    }
+    Ok(out)
+}
+
+fn merge_non_overlapping(dst: &mut Vec<OcrLineBox>, extra: Vec<OcrLineBox>) {
+    for candidate in extra {
+        if !dst.iter().any(|existing| boxes_overlap(existing, &candidate)) {
+            dst.push(candidate);
+        }
+    }
+}
+
 pub fn extract_text_offline(
     w: u32,
     h: u32,
@@ -188,99 +400,42 @@ pub fn extract_text_offline(
     let (scale, pad, ow, oh, buf) = prepare_ocr_buffer(w, h, bgra);
     let scale_f = scale as f32;
     let pad_f = pad as f32;
-    let ibuf = CryptographicBuffer::CreateFromByteArray(&buf)
-        .map_err(|e| format!("Failed to prepare OCR buffer: {e}"))?;
+    let bitmap = build_software_bitmap(ow, oh, &buf)?;
+    let engines = collect_ocr_engines()?;
 
-    let bitmap = SoftwareBitmap::CreateCopyFromBuffer(
-        &ibuf,
-        BitmapPixelFormat::Bgra8,
-        ow as i32,
-        oh as i32,
-    )
-    .map_err(|e| format!("Failed to build SoftwareBitmap: {e}"))?;
-
-    let engine = OcrEngine::TryCreateFromUserProfileLanguages()
-        .or_else(|_| {
-            let lang = Language::CreateLanguage(&HSTRING::from("en-US"))?;
-            OcrEngine::TryCreateFromLanguage(&lang)
-        })
-        .map_err(|e| {
-            format!("Windows OCR engine unavailable (check Windows Language OCR pack): {e}")
-        })?;
-
-    let op = engine
-        .RecognizeAsync(&bitmap)
-        .map_err(|e| format!("OCR recognition start failed: {e}"))?;
-    let res = op
-        .get()
-        .map_err(|e| format!("OCR recognition failed: {e}"))?;
-
-    let mut lines = Vec::new();
     let mut line_boxes = Vec::new();
-    if let Ok(ocr_lines) = res.Lines() {
-        let count = ocr_lines.Size().unwrap_or(0);
-        for i in 0..count {
-            if let Ok(line) = ocr_lines.GetAt(i) {
-                let s = line
-                    .Text()
-                    .map(|t| t.to_string_lossy().trim().to_string())
-                    .unwrap_or_default();
-                if s.is_empty() {
-                    continue;
-                }
+    for engine in &engines {
+        let found = run_ocr_with_engine(engine, &bitmap, scale_f, pad_f, w, h, bgra, origin_x, origin_y)?;
+        merge_non_overlapping(&mut line_boxes, found);
+    }
 
-                let mut min_x = f32::INFINITY;
-                let mut min_y = f32::INFINITY;
-                let mut max_x = f32::NEG_INFINITY;
-                let mut max_y = f32::NEG_INFINITY;
-
-                if let Ok(words) = line.Words() {
-                    let wc = words.Size().unwrap_or(0);
-                    for wi in 0..wc {
-                        if let Ok(word) = words.GetAt(wi) {
-                            if let Ok(rect) = word.BoundingRect() {
-                                min_x = min_x.min(rect.X);
-                                min_y = min_y.min(rect.Y);
-                                max_x = max_x.max(rect.X + rect.Width);
-                                max_y = max_y.max(rect.Y + rect.Height);
-                            }
-                        }
+    // Pass 2: Inverted high-contrast scan rescues faint grey text in dark-mode sidebars & shadowed overlays.
+    if let Some(rescue_src) = build_dark_rescue_bgra(bgra) {
+        let (_, _, row, roh, rbuf) = prepare_ocr_buffer(w, h, &rescue_src);
+        if row == ow && roh == oh {
+            if let Ok(rbitmap) = build_software_bitmap(row, roh, &rbuf) {
+                for engine in &engines {
+                    if let Ok(found) = run_ocr_with_engine(
+                        engine, &rbitmap, scale_f, pad_f, w, h, bgra, origin_x, origin_y,
+                    ) {
+                        merge_non_overlapping(&mut line_boxes, found);
                     }
                 }
-
-                let (lx, ly, lw, lh) = if min_x.is_finite() && max_x > min_x && max_y > min_y {
-                    let x0 = ((min_x - pad_f) / scale_f).clamp(0.0, w as f32);
-                    let y0 = ((min_y - pad_f) / scale_f).clamp(0.0, h as f32);
-                    let x1 = ((max_x - pad_f) / scale_f).clamp(x0 + 1.0, w as f32);
-                    let y1 = ((max_y - pad_f) / scale_f).clamp(y0 + 1.0, h as f32);
-                    (x0, y0, x1 - x0, y1 - y0)
-                } else {
-                    (0.0, 0.0, w as f32, 20.0)
-                };
-
-                let (bg_color, fg_color) = sample_box_colors(w, h, bgra, lx, ly, lw, lh);
-                lines.push(s.clone());
-                line_boxes.push(OcrLineBox {
-                    text: s,
-                    x: origin_x as f32 + lx,
-                    y: origin_y as f32 + ly,
-                    width: lw,
-                    height: lh,
-                    bg_color,
-                    fg_color,
-                });
             }
         }
     }
 
-    let text = if !lines.is_empty() {
-        lines.join("\n")
-    } else {
-        res.Text()
-            .map(|t| t.to_string_lossy().trim().to_string())
-            .unwrap_or_default()
-    };
+    line_boxes.sort_by(|a, b| {
+        let row_diff = (a.y - b.y).abs();
+        if row_diff < 10.0 {
+            a.x.total_cmp(&b.x)
+        } else {
+            a.y.total_cmp(&b.y)
+        }
+    });
 
+    let lines: Vec<String> = line_boxes.iter().map(|b| b.text.clone()).collect();
+    let text = lines.join("\n");
     let line_count = lines.len();
     Ok(OcrOutput {
         text,
@@ -312,18 +467,17 @@ mod tests {
         assert_eq!(fg_d, "#f8fafc");
     }
 
-    #[test]
-    fn padded_ocr_preserves_bounds_and_reads_tight_crop() {
-        let w = 180u32;
-        let h = 24u32;
-        let (scale, pad, ow, oh, buf) = prepare_ocr_buffer(w, h, &vec![240u8; (w * h * 4) as usize]);
-        assert_eq!(scale, 3);
-        assert_eq!(pad, 8);
-        assert_eq!(ow, w * 3 + 16);
-        assert_eq!(oh, h * 3 + 16);
-        assert_eq!(buf.len(), (ow * oh * 4) as usize);
-
-        let bgra: Vec<u8> = unsafe {
+    fn render_test_bgra(
+        w: u32,
+        h: u32,
+        bg_bgr: [u8; 3],
+        fg_colorref: u32,
+        font_h: i32,
+        tx: i32,
+        ty: i32,
+        text: &str,
+    ) -> Vec<u8> {
+        unsafe {
             use windows_sys::Win32::Graphics::Gdi::{
                 CreateCompatibleDC, CreateDIBSection, CreateFontW, DeleteDC, DeleteObject,
                 GdiFlush, SelectObject, SetBkMode, SetTextColor, TextOutW, BITMAPINFO,
@@ -341,14 +495,19 @@ mod tests {
             let dib = CreateDIBSection(dc, &bmi, DIB_RGB_COLORS, &mut bits, std::ptr::null_mut(), 0);
             let old = SelectObject(dc, dib as *mut _);
             let slice = std::slice::from_raw_parts_mut(bits as *mut u8, (w * h * 4) as usize);
-            slice.fill(250);
+            for px in slice.chunks_exact_mut(4) {
+                px[0] = bg_bgr[0];
+                px[1] = bg_bgr[1];
+                px[2] = bg_bgr[2];
+                px[3] = 255;
+            }
             let face: Vec<u16> = "Segoe UI\0".encode_utf16().collect();
-            let font = CreateFontW(-16, 0, 0, 0, 500, 0, 0, 0, 1, 0, 0, 4, 0, face.as_ptr());
+            let font = CreateFontW(font_h, 0, 0, 0, 500, 0, 0, 0, 1, 0, 0, 4, 0, face.as_ptr());
             let old_f = SelectObject(dc, font as *mut _);
             SetBkMode(dc, TRANSPARENT as i32);
-            SetTextColor(dc, 0x00111111);
-            let txt: Vec<u16> = "Translate hello".encode_utf16().collect();
-            TextOutW(dc, 2, 2, txt.as_ptr(), txt.len() as i32);
+            SetTextColor(dc, fg_colorref);
+            let txt: Vec<u16> = text.encode_utf16().collect();
+            TextOutW(dc, tx, ty, txt.as_ptr(), txt.len() as i32);
             GdiFlush();
             let out = slice.to_vec();
             SelectObject(dc, old_f);
@@ -357,12 +516,46 @@ mod tests {
             DeleteObject(dib as *mut _);
             DeleteDC(dc);
             out
-        };
+        }
+    }
 
+    #[test]
+    fn padded_ocr_preserves_bounds_and_reads_tight_crop() {
+        let w = 180u32;
+        let h = 24u32;
+        let (scale, pad, ow, oh, buf) = prepare_ocr_buffer(w, h, &vec![240u8; (w * h * 4) as usize]);
+        assert_eq!(scale, 3);
+        assert_eq!(pad, 8);
+        assert_eq!(ow, w * 3 + 16);
+        assert_eq!(oh, h * 3 + 16);
+        assert_eq!(buf.len(), (ow * oh * 4) as usize);
+
+        let bgra = render_test_bgra(w, h, [250, 250, 250], 0x00111111, -16, 2, 2, "Translate hello");
         let out = extract_text_offline(w, h, &bgra, 100, 50).expect("OCR should succeed");
         assert!(out.text.contains("Translate"), "unexpected OCR: {}", out.text);
         let b = &out.line_boxes[0];
         assert!(b.x >= 100.0 && b.x < 100.0 + w as f32);
         assert!(b.y >= 50.0 && b.y < 50.0 + h as f32);
+    }
+
+    #[test]
+    fn dark_rescue_pass_reads_muted_grey_dark_ui_text() {
+        let bgra = render_test_bgra(
+            260,
+            40,
+            [27, 24, 24],
+            0x0081766e,
+            -15,
+            16,
+            10,
+            "Settings Sidebar Menu",
+        );
+        assert!(build_dark_rescue_bgra(&bgra).is_some());
+        let out = extract_text_offline(260, 40, &bgra, 0, 0).expect("dark rescue OCR failed");
+        assert!(
+            out.text.contains("Settings") && out.text.contains("Menu"),
+            "muted dark UI OCR missed text: {}",
+            out.text
+        );
     }
 }
