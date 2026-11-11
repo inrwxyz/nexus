@@ -340,15 +340,16 @@
     let activeBox = null;
     let activePhys = null;
     let lastTranslatePhys = { x: 0, y: 0, width: 0, height: 0 };
+    let translateReqSeq = 0;
     let musicListening = false;
     let closing = false;
     let toastTimer = null;
 
-    function showToast(msg) {
+    function showToast(msg, durationMs = 1400) {
       copyToast.textContent = msg;
       copyToast.classList.add('show');
       clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => copyToast.classList.remove('show'), 1200);
+      toastTimer = setTimeout(() => copyToast.classList.remove('show'), durationMs);
     }
 
     function shortLangLabel(code) {
@@ -538,15 +539,16 @@
     }
 
     function resetSelection() {
+      const hadBox = !!activeBox;
       activeBox = null; activePhys = null; points = [];
       askBar.classList.remove('open');
       card.classList.remove('open');
       ocrBox.value = ''; ocrBox.classList.add('empty');
       btnCopy.disabled = true; btnWeb.disabled = true;
-      if (activeTool === 'translate') {
-        lastTranslatePhys = { x: 0, y: 0, width: 0, height: 0 };
+      if (activeTool === 'translate' && !hadBox) {
         renderScrim(null, []);
       } else {
+        lastTranslatePhys = { x: 0, y: 0, width: 0, height: 0 };
         clearInPlaceTranslation();
         renderScrim(null, []);
       }
@@ -653,6 +655,7 @@
     }
 
     async function runTranslate(phys) {
+      const reqSeq = ++translateReqSeq;
       const tl = popLang.value || 'en';
       lastTranslatePhys = phys;
       card.classList.remove('open');
@@ -664,18 +667,23 @@
         const res = await T.core.invoke('translate_selection', {
           x: phys.x, y: phys.y, width: phys.width, height: phys.height, targetLang: tl
         });
+        if (reqSeq !== translateReqSeq || closing) return;
         if (res.error || !res.ok || !res.lines || res.lines.length === 0) {
           clearInPlaceTranslation();
-          showToast(res.error || 'No readable text found');
+          showToast(res.error || 'No readable text found', 3200);
           return;
         }
         renderInPlaceLines(res.lines);
       } catch (e) {
-        showToast(`Translate error: ${e}`);
+        if (reqSeq !== translateReqSeq || closing) return;
+        clearInPlaceTranslation();
+        showToast(`Translate error: ${e}`, 3400);
       } finally {
-        toolTranslate.classList.remove('busy');
-        langBadge.textContent = shortLangLabel(popLang.value);
-        positionBesideButton(langPill, toolTranslate);
+        if (reqSeq === translateReqSeq) {
+          toolTranslate.classList.remove('busy');
+          langBadge.textContent = shortLangLabel(popLang.value);
+          positionBesideButton(langPill, toolTranslate);
+        }
       }
     }
 
