@@ -174,17 +174,81 @@ fn sample_box_colors(w: u32, h: u32, bgra: &[u8], lx: f32, ly: f32, lw: f32, lh:
     }
 }
 
-/// Smoothly inverts BGRA RGB channels (`255 - c`) while keeping alpha opaque so dark-mode
-/// muted text becomes crisp dark ink on a light background without destroying ClearType smoothing.
-fn invert_bgra_smooth(bgra: &[u8]) -> Vec<u8> {
+fn sample_luma_stats(bgra: &[u8]) -> (usize, usize, usize) {
+    let px_count = bgra.len() / 4;
+    if px_count == 0 {
+        return (0, 0, 0);
+    }
+    let step = (px_count / 2500).max(1);
+    let mut dark = 0usize;
+    let mut bright = 0usize;
+    let mut total = 0usize;
+    for px in bgra.chunks_exact(4).step_by(step) {
+        let luma = (77u32 * px[2] as u32 + 150u32 * px[1] as u32 + 29u32 * px[0] as u32) >> 8;
+        if luma < 110 {
+            dark += 1;
+        }
+        if luma >= 215 {
+            bright += 1;
+        }
+        total += 1;
+    }
+    (dark, bright, total)
+}
+
+/// Smoothly inverts dark UI regions (preserving ClearType antialiasing across 30..210 luma)
+/// so muted grey-on-dark UI text reads cleanly when Pass 1 misses it.
+fn build_smooth_dark_invert(bgra: &[u8]) -> Option<Vec<u8>> {
+    let (dark, _, total) = sample_luma_stats(bgra);
+    if total == 0 || dark * 100 < total * 8 {
+        return None;
+    }
+
     let mut out = vec![255u8; bgra.len()];
     for (src, dst) in bgra.chunks_exact(4).zip(out.chunks_exact_mut(4)) {
-        dst[0] = 255 - src[0];
-        dst[1] = 255 - src[1];
-        dst[2] = 255 - src[2];
+        let luma = (77u32 * src[2] as u32 + 150u32 * src[1] as u32 + 29u32 * src[0] as u32) >> 8;
+        let v = if luma <= 30 {
+            255u8
+        } else if luma >= 210 {
+            0u8
+        } else {
+            (255 - ((luma - 30) * 255 / 180)) as u8
+        };
+        dst[0] = v;
+        dst[1] = v;
+        dst[2] = v;
         dst[3] = 255;
     }
-    out
+    Some(out)
+}
+
+/// Smoothly extracts bright white glyphs on colored/pastel surfaces (such as desktop icon labels
+/// over wallpaper) into dark-on-white without harsh binary clipping.
+fn build_smooth_bright_mask(bgra: &[u8]) -> Option<Vec<u8>> {
+    let (_, bright, total) = sample_luma_stats(bgra);
+    if total == 0 || bright * 1000 < total || bright * 100 > total * 48 {
+        return None;
+    }
+
+    let mut out = vec![255u8; bgra.len()];
+    for (src, dst) in bgra.chunks_exact(4).zip(out.chunks_exact_mut(4)) {
+        let luma = (77u32 * src[2] as u32 + 150u32 * src[1] as u32 + 29u32 * src[0] as u32) >> 8;
+        let max_c = src[0].max(src[1]).max(src[2]);
+        let min_c = src[0].min(src[1]).min(src[2]);
+        let chroma = max_c - min_c;
+        let v = if chroma > 54 || luma <= 178 {
+            255u8
+        } else if luma >= 232 {
+            0u8
+        } else {
+            ((232 - luma) * 255 / 54) as u8
+        };
+        dst[0] = v;
+        dst[1] = v;
+        dst[2] = v;
+        dst[3] = 255;
+    }
+    Some(out)
 }
 
 fn boxes_overlap(a: &OcrLineBox, b: &OcrLineBox) -> bool {
@@ -488,7 +552,7 @@ pub fn extract_text_offline(
     let bitmap = build_software_bitmap(ow, oh, &buf)?;
     let engines = collect_ocr_engines()?;
 
-    // Pass 1: Pure, unclipped ClearType OCR pass (matches original fast/accurate Windows OCR behavior).
+    // Pass 1: Pure, unclipped ClearType OCR pass.
     let mut line_boxes = Vec::new();
     let mut fallback_res_text = String::new();
     for engine in &engines {
@@ -500,28 +564,27 @@ pub fn extract_text_offline(
         merge_best_boxes(&mut line_boxes, found);
     }
 
-    // Fallback Pass 2: Smooth color inversion (zero harsh thresholding) ONLY if Pass 1 found nothing
-    // (helps muted dark-mode text selections without degrading normal ClearType results).
-    if line_boxes.is_empty() && fallback_res_text.is_empty() {
-        let inv_src = invert_bgra_smooth(bgra);
-        let (_, _, row, roh, rbuf) = prepare_ocr_buffer(w, h, &inv_src);
-        if let Ok(rbitmap) = build_software_bitmap(row, roh, &rbuf) {
-            for engine in &engines {
-                if let Ok((found, raw_txt)) = run_ocr_with_engine(
-                    engine,
-                    &rbitmap,
-                    scale_f,
-                    pad_f,
-                    w,
-                    h,
-                    bgra,
-                    origin_x,
-                    origin_y,
-                ) {
-                    if fallback_res_text.is_empty() && !raw_txt.is_empty() {
-                        fallback_res_text = raw_txt;
+    // Pass 2 & 3 (non-destructive smooth ramps): rescue muted grey dark-mode UI lines and
+    // bright white labels on colored surfaces/wallpapers, adding ONLY non-overlapping missed boxes.
+    for rescue_opt in [build_smooth_dark_invert(bgra), build_smooth_bright_mask(bgra)] {
+        if let Some(rescue_src) = rescue_opt {
+            let (_, _, row, roh, rbuf) = prepare_ocr_buffer(w, h, &rescue_src);
+            if row == ow && roh == oh {
+                if let Ok(rbitmap) = build_software_bitmap(row, roh, &rbuf) {
+                    for engine in &engines {
+                        if let Ok((found, raw_txt)) = run_ocr_with_engine(
+                            engine, &rbitmap, scale_f, pad_f, w, h, bgra, origin_x, origin_y,
+                        ) {
+                            if fallback_res_text.is_empty() && !raw_txt.is_empty() {
+                                fallback_res_text = raw_txt;
+                            }
+                            let clean: Vec<OcrLineBox> = found
+                                .into_iter()
+                                .filter(|b| b.text.chars().filter(|c| c.is_alphanumeric()).count() >= 2)
+                                .collect();
+                            merge_best_boxes(&mut line_boxes, clean);
+                        }
                     }
-                    merge_best_boxes(&mut line_boxes, found);
                 }
             }
         }
@@ -656,12 +719,45 @@ mod tests {
             10,
             "Settings Sidebar Menu",
         );
-        let inv = invert_bgra_smooth(&bgra);
-        assert_eq!(inv[0], 255 - 27);
+        assert!(build_smooth_dark_invert(&bgra).is_some());
         let out = extract_text_offline(260, 40, &bgra, 0, 0).expect("dark fallback OCR failed");
         assert!(
             out.text.contains("Settings") && out.text.contains("Menu"),
             "muted dark UI OCR missed text: {}",
+            out.text
+        );
+    }
+
+    #[test]
+    fn smooth_rescue_reads_mixed_dark_and_bright_desktop_labels() {
+        let w = 480u32;
+        let h = 120u32;
+        let mut bgra = render_test_bgra(
+            w,
+            h,
+            [27, 24, 24],
+            0x00988f8a, // Muted grey prompt bar (#8a8f98 -> BGR 0x00988f8a)
+            -15,
+            210,
+            44,
+            "Ask anything now",
+        );
+        let strip = render_test_bgra(180, h, [214, 165, 180], 0x00FFFFFF, -13, 18, 44, "Google Chrome");
+        for y in 0..h as usize {
+            let src_off = y * 180 * 4;
+            let dst_off = y * w as usize * 4;
+            bgra[dst_off..dst_off + 180 * 4].copy_from_slice(&strip[src_off..src_off + 180 * 4]);
+        }
+        assert!(build_smooth_bright_mask(&bgra).is_some());
+        let out = extract_text_offline(w, h, &bgra, 0, 0).expect("mixed OCR failed");
+        assert!(
+            out.text.contains("Ask") && out.text.contains("anything"),
+            "muted grey text missed/garbled: {}",
+            out.text
+        );
+        assert!(
+            out.text.contains("Google") && out.text.contains("Chrome"),
+            "pastel desktop icon text missed: {}",
             out.text
         );
     }
