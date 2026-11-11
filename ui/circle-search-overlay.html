@@ -645,39 +645,53 @@
       const sx = window.innerWidth / Math.max(1, initInfo.width);
       const sy = window.innerHeight / Math.max(1, initInfo.height);
 
-      for (const item of lines) {
-        // 3px-4px padded solid surface shield covers shadowed UI & desktop icon outlines cleanly
+      const rects = lines.map(item => {
         const cssX = Math.max(0, item.x * sx - 4);
         const cssY = Math.max(0, item.y * sy - 3);
         const cssW = Math.max(20, item.width * sx + 8);
         const cssH = Math.max(18, item.height * sy + 6);
-        const maxW = Math.max(cssW * 1.65, Math.min(window.innerWidth - cssX - 8, cssW + 120));
+        return { item, cssX, cssY, cssW, cssH, cy: cssY + cssH / 2 };
+      });
+
+      for (let i = 0; i < rects.length; i++) {
+        const cur = rects[i];
+        let rightBound = window.innerWidth - 8;
+        for (let j = 0; j < rects.length; j++) {
+          if (i === j) continue;
+          const other = rects[j];
+          const sameRow = Math.abs(cur.cy - other.cy) < Math.max(cur.cssH, other.cssH) * 0.65;
+          if (sameRow && other.cssX > cur.cssX + cur.cssW * 0.45) {
+            rightBound = Math.min(rightBound, other.cssX - 4);
+          }
+        }
+        const extraBudget = Math.min(88, Math.max(22, cur.cssW * 0.45));
+        const maxW = Math.max(cur.cssW, Math.min(rightBound - cur.cssX, cur.cssW + extraBudget));
 
         const el = document.createElement('div');
         el.className = 'tr-box';
-        el.title = `${item.source_text}\nClick to copy`;
-        el.textContent = item.translated_text;
-        el.style.left = `${cssX.toFixed(1)}px`;
-        el.style.top = `${cssY.toFixed(1)}px`;
-        el.style.minWidth = `${cssW.toFixed(1)}px`;
+        el.title = `${cur.item.source_text}\nClick to copy`;
+        el.textContent = cur.item.translated_text;
+        el.style.left = `${cur.cssX.toFixed(1)}px`;
+        el.style.top = `${cur.cssY.toFixed(1)}px`;
+        el.style.minWidth = `${cur.cssW.toFixed(1)}px`;
         el.style.maxWidth = `${maxW.toFixed(1)}px`;
-        el.style.minHeight = `${cssH.toFixed(1)}px`;
-        el.style.background = item.bg_color || 'rgb(15, 19, 25)';
-        el.style.color = item.fg_color || '#f8fafc';
+        el.style.minHeight = `${cur.cssH.toFixed(1)}px`;
+        el.style.background = cur.item.bg_color || 'rgb(15, 19, 25)';
+        el.style.color = cur.item.fg_color || '#f8fafc';
 
-        let fs = Math.max(10.0, Math.min(44, (item.height * sy) * 0.78));
+        let fs = Math.max(10.0, Math.min(44, (cur.item.height * sy) * 0.78));
         el.style.fontSize = `${fs.toFixed(1)}px`;
         trLayer.appendChild(el);
 
         if (el.scrollWidth > maxW + 1) {
-          fs = Math.max(8.5, fs * (maxW / el.scrollWidth));
+          fs = Math.max(8.0, fs * (maxW / el.scrollWidth));
           el.style.fontSize = `${fs.toFixed(1)}px`;
         }
 
         el.addEventListener('click', async ev => {
           ev.stopPropagation();
           try {
-            await T.core.invoke('copy_circle_text', { text: item.translated_text });
+            await T.core.invoke('copy_circle_text', { text: cur.item.translated_text });
             showToast('Copied');
           } catch (_) {}
         });

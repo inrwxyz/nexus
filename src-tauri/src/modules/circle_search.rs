@@ -559,14 +559,26 @@ fn send_ctrl_v() {
     }
 }
 
-fn open_browser_and_paste_clipboard(url: &str, clip_ok: bool) -> Result<(), String> {
+fn open_browser_and_paste_clipboard(
+    url: &str,
+    clip_seq: Option<u32>,
+    temp_file: Option<std::path::PathBuf>,
+) -> Result<(), String> {
     browser::open_url(url)?;
-    if clip_ok {
-        std::thread::spawn(|| {
+    std::thread::spawn(move || {
+        if let Some(seq) = clip_seq {
             std::thread::sleep(Duration::from_millis(3200));
             send_ctrl_v();
-        });
-    }
+            // Give Chromium/Edge enough time to consume CF_DIB on paste, then clear screenshot from clipboard & temp
+            std::thread::sleep(Duration::from_millis(1200));
+            capture::clear_clipboard_if_sequence(seq);
+        } else if temp_file.is_some() {
+            std::thread::sleep(Duration::from_millis(10000));
+        }
+        if let Some(path) = temp_file {
+            let _ = std::fs::remove_file(path);
+        }
+    });
     Ok(())
 }
 
@@ -579,14 +591,19 @@ async fn run_lens_search_impl(
 ) -> Result<VisualSearchResult, String> {
     let (_, _, cw, ch, bgra) = crop_or_full(x, y, width, height)?;
 
-    let (clip_ok, bridge_path) = tauri::async_runtime::spawn_blocking(move || {
-        let clip = capture::copy_bgra_to_clipboard(cw, ch, &bgra);
-        let png = capture::encode_png(cw, ch, &bgra)?;
-        let html = build_lens_bridge_html(&png);
-        let path = std::env::temp_dir().join("nexus_lens_bridge.html");
-        std::fs::write(&path, html.as_bytes())
-            .map_err(|e| format!("Failed to write nexus_lens_bridge.html: {e}"))?;
-        Ok::<(bool, std::path::PathBuf), String>((clip, path))
+    let (clip_seq, bridge_path) = tauri::async_runtime::spawn_blocking(move || {
+        let clip_seq = capture::copy_bgra_to_clipboard(cw, ch, &bgra);
+        let bridge_path = if clip_seq.is_none() {
+            let png = capture::encode_png(cw, ch, &bgra)?;
+            let html = build_lens_bridge_html(&png);
+            let path = std::env::temp_dir().join("nexus_lens_bridge.html");
+            std::fs::write(&path, html.as_bytes())
+                .map_err(|e| format!("Failed to write nexus_lens_bridge.html: {e}"))?;
+            Some(path)
+        } else {
+            None
+        };
+        Ok::<(Option<u32>, Option<std::path::PathBuf>), String>((clip_seq, bridge_path))
     })
     .await
     .map_err(|e| format!("Bridge build worker failed: {e}"))??;
@@ -599,12 +616,17 @@ async fn run_lens_search_impl(
     hide_and_destroy_overlay(&app);
 
     // Direct POST to lens.google.com/v3/upload returns 403 even in Chrome.
-    // So: image is already on the clipboard -> open the Lens home page -> Ctrl+V once it loads.
+    // So: image is temporarily on the clipboard -> open Lens -> Ctrl+V -> auto-clear clipboard.
+    let clip_ok = clip_seq.is_some();
     let msg = if clip_ok {
-        open_browser_and_paste_clipboard("https://lens.google.com/", true)?;
+        open_browser_and_paste_clipboard("https://lens.google.com/", clip_seq, bridge_path.clone())?;
         "Opened Google Lens; pasting captured image".to_string()
     } else {
-        browser::open_url(&format!("http://127.0.0.1:41780/lens-bridge?t={ts}"))?;
+        open_browser_and_paste_clipboard(
+            &format!("http://127.0.0.1:41780/lens-bridge?t={ts}"),
+            None,
+            bridge_path.clone(),
+        )?;
         "Opened Google Lens bridge in default browser".to_string()
     };
 
@@ -612,13 +634,17 @@ async fn run_lens_search_impl(
         ok: true,
         opened_direct: true,
         clipboard_ready: clip_ok,
-        url: bridge_path.to_string_lossy().to_string(),
+        url: bridge_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default(),
         message: msg,
     })
 }
 
-/// Copies the captured region (or full monitor) to the clipboard and opens Google Translate Images
-/// (`sl=auto&tl=...&op=images`) in the default browser with delayed Ctrl+V paste for any language.
+/// Copies the captured region (or full monitor) to the clipboard, opens Google Translate Images
+/// (`sl=auto&tl=...&op=images`) in the default browser with delayed Ctrl+V paste, and automatically
+/// clears the clipboard image afterward so no screenshot lingers in memory/history.
 #[tauri::command]
 pub async fn google_translate_image(
     app: AppHandle,
@@ -635,31 +661,40 @@ pub async fn google_translate_image(
     };
     let (_, _, cw, ch, bgra) = crop_or_full(x, y, width, height)?;
 
-    let (clip_ok, png_path) = tauri::async_runtime::spawn_blocking(move || {
-        let clip = capture::copy_bgra_to_clipboard(cw, ch, &bgra);
-        let png = capture::encode_png(cw, ch, &bgra)?;
-        let path = std::env::temp_dir().join("nexus_translate_image.png");
-        std::fs::write(&path, &png)
-            .map_err(|e| format!("Failed to write nexus_translate_image.png: {e}"))?;
-        Ok::<(bool, std::path::PathBuf), String>((clip, path))
+    let (clip_seq, png_path) = tauri::async_runtime::spawn_blocking(move || {
+        let clip_seq = capture::copy_bgra_to_clipboard(cw, ch, &bgra);
+        let path = if clip_seq.is_none() {
+            let png = capture::encode_png(cw, ch, &bgra)?;
+            let p = std::env::temp_dir().join("nexus_translate_image.png");
+            std::fs::write(&p, &png)
+                .map_err(|e| format!("Failed to write nexus_translate_image.png: {e}"))?;
+            Some(p)
+        } else {
+            None
+        };
+        Ok::<(Option<u32>, Option<std::path::PathBuf>), String>((clip_seq, path))
     })
     .await
     .map_err(|e| format!("Image prepare worker failed: {e}"))??;
 
+    let clip_ok = clip_seq.is_some();
     let url = format!(
         "https://translate.google.com/?sl=auto&tl={}&op=images",
         url_encode_query(&tl)
     );
     hide_and_destroy_overlay(&app);
-    open_browser_and_paste_clipboard(&url, clip_ok)?;
+    open_browser_and_paste_clipboard(&url, clip_seq, png_path.clone())?;
 
     Ok(VisualSearchResult {
         ok: true,
         opened_direct: true,
         clipboard_ready: clip_ok,
-        url: png_path.to_string_lossy().to_string(),
+        url: png_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default(),
         message: if clip_ok {
-            "Opened Google Translate Images; pasting captured image".to_string()
+            "Opened Google Translate Images; pasting & clearing clipboard".to_string()
         } else {
             "Opened Google Translate Images; upload saved capture".to_string()
         },

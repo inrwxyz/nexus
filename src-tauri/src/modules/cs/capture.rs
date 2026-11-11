@@ -9,7 +9,8 @@ use windows_sys::Win32::Graphics::Gdi::{
     MONITOR_DEFAULTTONEAREST, SRCCOPY,
 };
 use windows_sys::Win32::System::DataExchange::{
-    CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
+    CloseClipboard, EmptyClipboard, GetClipboardSequenceNumber, OpenClipboard,
+    RegisterClipboardFormatW, SetClipboardData,
 };
 use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock};
 use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
@@ -220,8 +221,26 @@ pub fn encode_png(w: u32, h: u32, bgra: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-/// Put a cropped BGRA image onto the Windows Clipboard as CF_DIB (for instant Ctrl+V paste/Lens fallback).
-pub fn copy_bgra_to_clipboard(w: u32, h: u32, bgra: &[u8]) -> bool {
+unsafe fn set_clipboard_dword_flag(name_utf16: &[u16], value: u32) {
+    let fmt = RegisterClipboardFormatW(name_utf16.as_ptr());
+    if fmt == 0 {
+        return;
+    }
+    let h_flag = GlobalAlloc(0x0002, std::mem::size_of::<u32>());
+    if h_flag.is_null() {
+        return;
+    }
+    let ptr = GlobalLock(h_flag) as *mut u8;
+    if !ptr.is_null() {
+        std::ptr::copy_nonoverlapping(value.to_le_bytes().as_ptr(), ptr, std::mem::size_of::<u32>());
+        GlobalUnlock(h_flag);
+        let _ = SetClipboardData(fmt, h_flag);
+    }
+}
+
+/// Put a cropped BGRA image onto the Windows Clipboard as CF_DIB (marked excluded from Windows
+/// Clipboard History / Cloud Sync) and return the resulting clipboard sequence number on success.
+pub fn copy_bgra_to_clipboard(w: u32, h: u32, bgra: &[u8]) -> Option<u32> {
     let hdr_size = std::mem::size_of::<BITMAPINFOHEADER>();
     let total = hdr_size + bgra.len();
 
@@ -236,9 +255,18 @@ pub fn copy_bgra_to_clipboard(w: u32, h: u32, bgra: &[u8]) -> bool {
 
     unsafe {
         if OpenClipboard(std::ptr::null_mut()) == 0 {
-            return false;
+            return None;
         }
         EmptyClipboard();
+
+        let exclude_fmt: Vec<u16> = "ExcludeClipboardContentFromMonitorProcessing\0"
+            .encode_utf16()
+            .collect();
+        let history_fmt: Vec<u16> = "CanIncludeInClipboardHistory\0".encode_utf16().collect();
+        set_clipboard_dword_flag(&exclude_fmt, 0);
+        set_clipboard_dword_flag(&history_fmt, 0);
+
+        let mut copied = false;
         let h_mem = GlobalAlloc(0x0002, total); // GMEM_MOVEABLE
         if !h_mem.is_null() {
             let ptr = GlobalLock(h_mem) as *mut u8;
@@ -247,11 +275,31 @@ pub fn copy_bgra_to_clipboard(w: u32, h: u32, bgra: &[u8]) -> bool {
                 std::ptr::copy_nonoverlapping(bgra.as_ptr(), ptr.add(hdr_size), bgra.len());
                 GlobalUnlock(h_mem);
                 // CF_DIB = 8
-                SetClipboardData(8, h_mem);
+                copied = !SetClipboardData(8, h_mem).is_null();
             }
         }
         CloseClipboard();
-        true
+        if copied {
+            Some(GetClipboardSequenceNumber())
+        } else {
+            None
+        }
+    }
+}
+
+/// Clears the Windows Clipboard after automated paste completes, only if nothing else replaced
+/// our temporary image in the meantime.
+pub fn clear_clipboard_if_sequence(expected_seq: u32) {
+    unsafe {
+        if GetClipboardSequenceNumber() != expected_seq {
+            return;
+        }
+        if OpenClipboard(std::ptr::null_mut()) != 0 {
+            if GetClipboardSequenceNumber() == expected_seq {
+                EmptyClipboard();
+            }
+            CloseClipboard();
+        }
     }
 }
 
