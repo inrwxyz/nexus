@@ -51,8 +51,8 @@ impl Drop for ComGuard {
 /// Upscales captures and adds an edge-replicated quiet border so Windows.Media.Ocr detects tight crops
 /// and small UI words sharply. Returns (scale_factor, pad_px, out_w, out_h, bgra_bytes).
 fn prepare_ocr_buffer(w: u32, h: u32, bgra: &[u8]) -> (u32, u32, u32, u32, Vec<u8>) {
-    const MAX_OCR_DIM: u32 = 5800;
-    let scale = if (w < 160 || h < 60) && w * 3 <= MAX_OCR_DIM && h * 3 <= MAX_OCR_DIM {
+    const MAX_OCR_DIM: u32 = 4400;
+    let scale = if (w < 120 || h < 44) && w * 3 <= MAX_OCR_DIM && h * 3 <= MAX_OCR_DIM {
         3
     } else if w * 2 <= MAX_OCR_DIM && h * 2 <= MAX_OCR_DIM {
         2
@@ -174,93 +174,17 @@ fn sample_box_colors(w: u32, h: u32, bgra: &[u8], lx: f32, ly: f32, lw: f32, lh:
     }
 }
 
-#[derive(Copy, Clone)]
-enum RescueMode {
-    DarkSurface,
-    BrightText,
-}
-
-#[inline]
-fn pixel_luma(px: &[u8]) -> u32 {
-    (77u32 * px[2] as u32 + 150u32 * px[1] as u32 + 29u32 * px[0] as u32) >> 8
-}
-
-/// Inspects image luminance distribution and constructs requested high-contrast black-on-white
-/// rescue buffers (`DarkSurface` for muted grey text on dark UI, `BrightText` for white shadowed
-/// desktop labels and bright UI buttons on colored backgrounds).
-fn build_rescue_buffers(bgra: &[u8]) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
-    let px_count = bgra.len() / 4;
-    if px_count == 0 {
-        return (None, None);
+/// Smoothly inverts BGRA RGB channels (`255 - c`) while keeping alpha opaque so dark-mode
+/// muted text becomes crisp dark ink on a light background without destroying ClearType smoothing.
+fn invert_bgra_smooth(bgra: &[u8]) -> Vec<u8> {
+    let mut out = vec![255u8; bgra.len()];
+    for (src, dst) in bgra.chunks_exact(4).zip(out.chunks_exact_mut(4)) {
+        dst[0] = 255 - src[0];
+        dst[1] = 255 - src[1];
+        dst[2] = 255 - src[2];
+        dst[3] = 255;
     }
-
-    let step = (px_count / 2500).max(1);
-    let mut dark_samples = 0usize;
-    let mut bright_samples = 0usize;
-    let mut total_samples = 0usize;
-
-    for px in bgra.chunks_exact(4).step_by(step) {
-        let luma = pixel_luma(px);
-        if luma < 105 {
-            dark_samples += 1;
-        }
-        if luma >= 210 {
-            bright_samples += 1;
-        }
-        total_samples += 1;
-    }
-
-    let want_dark = total_samples > 0 && dark_samples * 100 >= total_samples * 10;
-    let want_bright = total_samples > 0
-        && bright_samples * 1000 >= total_samples
-        && bright_samples * 100 <= total_samples * 48;
-
-    let transform = |mode: RescueMode| -> Vec<u8> {
-        let mut out = vec![255u8; bgra.len()];
-        for (src, dst) in bgra.chunks_exact(4).zip(out.chunks_exact_mut(4)) {
-            let luma = pixel_luma(src);
-            let v = match mode {
-                RescueMode::DarkSurface => {
-                    if luma <= 45 {
-                        255u8
-                    } else if luma >= 155 {
-                        0u8
-                    } else {
-                        (255 - ((luma - 45) * 255 / 110)) as u8
-                    }
-                }
-                RescueMode::BrightText => {
-                    let max_c = src[0].max(src[1]).max(src[2]);
-                    let min_c = src[0].min(src[1]).min(src[2]);
-                    let chroma = max_c - min_c;
-                    if luma < 185 || chroma > 54 {
-                        255u8
-                    } else if luma >= 212 {
-                        0u8
-                    } else {
-                        ((212 - luma) * 255 / 27) as u8
-                    }
-                }
-            };
-            dst[0] = v;
-            dst[1] = v;
-            dst[2] = v;
-            dst[3] = 255;
-        }
-        out
-    };
-
-    let dark_buf = if want_dark {
-        Some(transform(RescueMode::DarkSurface))
-    } else {
-        None
-    };
-    let bright_buf = if want_bright {
-        Some(transform(RescueMode::BrightText))
-    } else {
-        None
-    };
-    (dark_buf, bright_buf)
+    out
 }
 
 fn boxes_overlap(a: &OcrLineBox, b: &OcrLineBox) -> bool {
@@ -347,9 +271,9 @@ fn build_software_bitmap(ow: u32, oh: u32, buf: &[u8]) -> Result<SoftwareBitmap,
 }
 
 #[allow(clippy::too_many_arguments)]
-fn push_ocr_segment(
+fn push_ocr_box(
     out: &mut Vec<OcrLineBox>,
-    words: &[String],
+    text: String,
     min_x: f32,
     min_y: f32,
     max_x: f32,
@@ -362,25 +286,26 @@ fn push_ocr_segment(
     origin_x: u32,
     origin_y: u32,
 ) {
-    let text = words.join(" ").trim().to_string();
-    if text.is_empty() || !text.chars().any(|c| c.is_alphanumeric()) {
-        return;
-    }
-    if !min_x.is_finite() || max_x <= min_x || max_y <= min_y {
+    let trimmed = text.trim().to_string();
+    if trimmed.is_empty() {
         return;
     }
 
-    let x0 = ((min_x - pad_f) / scale_f).clamp(0.0, orig_w as f32);
-    let y0 = ((min_y - pad_f) / scale_f).clamp(0.0, orig_h as f32);
-    let x1 = ((max_x - pad_f) / scale_f).clamp(x0 + 1.0, orig_w as f32);
-    let y1 = ((max_y - pad_f) / scale_f).clamp(y0 + 1.0, orig_h as f32);
-    let (lw, lh) = (x1 - x0, y1 - y0);
+    let (lx, ly, lw, lh) = if min_x.is_finite() && max_x > min_x && max_y > min_y {
+        let x0 = ((min_x - pad_f) / scale_f).clamp(0.0, orig_w as f32);
+        let y0 = ((min_y - pad_f) / scale_f).clamp(0.0, orig_h as f32);
+        let x1 = ((max_x - pad_f) / scale_f).clamp(x0 + 1.0, orig_w as f32);
+        let y1 = ((max_y - pad_f) / scale_f).clamp(y0 + 1.0, orig_h as f32);
+        (x0, y0, x1 - x0, y1 - y0)
+    } else {
+        (0.0, 0.0, orig_w as f32, 20.0)
+    };
 
-    let (bg_color, fg_color) = sample_box_colors(orig_w, orig_h, orig_bgra, x0, y0, lw, lh);
+    let (bg_color, fg_color) = sample_box_colors(orig_w, orig_h, orig_bgra, lx, ly, lw, lh);
     out.push(OcrLineBox {
-        text,
-        x: origin_x as f32 + x0,
-        y: origin_y as f32 + y0,
+        text: trimmed,
+        x: origin_x as f32 + lx,
+        y: origin_y as f32 + ly,
         width: lw,
         height: lh,
         bg_color,
@@ -399,7 +324,7 @@ fn run_ocr_with_engine(
     orig_bgra: &[u8],
     origin_x: u32,
     origin_y: u32,
-) -> Result<Vec<OcrLineBox>, String> {
+) -> Result<(Vec<OcrLineBox>, String), String> {
     let op = engine
         .RecognizeAsync(bitmap)
         .map_err(|e| format!("OCR recognition start failed: {e}"))?;
@@ -408,66 +333,111 @@ fn run_ocr_with_engine(
         .map_err(|e| format!("OCR recognition failed: {e}"))?;
 
     let mut out = Vec::new();
+    let fallback_text = res
+        .Text()
+        .map(|t| t.to_string_lossy().trim().to_string())
+        .unwrap_or_default();
+
     let Ok(ocr_lines) = res.Lines() else {
-        return Ok(out);
+        return Ok((out, fallback_text));
     };
     let count = ocr_lines.Size().unwrap_or(0);
     for i in 0..count {
         let Ok(line) = ocr_lines.GetAt(i) else {
             continue;
         };
-        let Ok(words) = line.Words() else {
-            continue;
-        };
-        let wc = words.Size().unwrap_or(0);
-        if wc == 0 {
+        let line_text = line
+            .Text()
+            .map(|t| t.to_string_lossy().trim().to_string())
+            .unwrap_or_default();
+        if line_text.is_empty() {
             continue;
         }
 
-        let mut word_items: Vec<(String, f32, f32, f32, f32)> = Vec::with_capacity(wc as usize);
-        for wi in 0..wc {
-            if let Ok(word) = words.GetAt(wi) {
-                let wt = word
-                    .Text()
-                    .map(|t| t.to_string_lossy().trim().to_string())
-                    .unwrap_or_default();
-                if wt.is_empty() {
-                    continue;
-                }
-                if let Ok(rect) = word.BoundingRect() {
-                    if rect.Width > 0.0 && rect.Height > 0.0 {
-                        word_items.push((
-                            wt,
-                            rect.X,
-                            rect.Y,
-                            rect.X + rect.Width,
-                            rect.Y + rect.Height,
-                        ));
+        let mut word_items: Vec<(String, f32, f32, f32, f32)> = Vec::new();
+        if let Ok(words) = line.Words() {
+            let wc = words.Size().unwrap_or(0);
+            for wi in 0..wc {
+                if let Ok(word) = words.GetAt(wi) {
+                    let wt = word
+                        .Text()
+                        .map(|t| t.to_string_lossy().trim().to_string())
+                        .unwrap_or_default();
+                    if let Ok(rect) = word.BoundingRect() {
+                        if !wt.is_empty() && rect.Width > 0.0 && rect.Height > 0.0 {
+                            word_items.push((
+                                wt,
+                                rect.X,
+                                rect.Y,
+                                rect.X + rect.Width,
+                                rect.Y + rect.Height,
+                            ));
+                        }
                     }
                 }
             }
         }
+
         if word_items.is_empty() {
+            push_ocr_box(
+                &mut out,
+                line_text,
+                f32::INFINITY,
+                f32::INFINITY,
+                f32::NEG_INFINITY,
+                f32::NEG_INFINITY,
+                scale_f,
+                pad_f,
+                orig_w,
+                orig_h,
+                orig_bgra,
+                origin_x,
+                origin_y,
+            );
             continue;
         }
 
         word_items.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let has_wide_gap = word_items.windows(2).any(|pair| {
+            let h_est = (pair[0].4 - pair[0].2).max(12.0 * scale_f);
+            pair[1].1 > pair[0].3 + (h_est * 3.0).max(36.0 * scale_f)
+        });
+
+        // Fast exact path: keep verbatim line.Text() when words are contiguous (preserves punctuation spacing).
+        if !has_wide_gap {
+            let mut min_x = f32::INFINITY;
+            let mut min_y = f32::INFINITY;
+            let mut max_x = f32::NEG_INFINITY;
+            let mut max_y = f32::NEG_INFINITY;
+            for (_, x0, y0, x1, y1) in &word_items {
+                min_x = min_x.min(*x0);
+                min_y = min_y.min(*y0);
+                max_x = max_x.max(*x1);
+                max_y = max_y.max(*y1);
+            }
+            push_ocr_box(
+                &mut out, line_text, min_x, min_y, max_x, max_y, scale_f, pad_f, orig_w, orig_h,
+                orig_bgra, origin_x, origin_y,
+            );
+            continue;
+        }
 
         let mut seg_words = Vec::new();
         let mut min_x = f32::INFINITY;
         let mut min_y = f32::INFINITY;
         let mut max_x = f32::NEG_INFINITY;
         let mut max_y = f32::NEG_INFINITY;
-
         for (wt, wx0, wy0, wx1, wy1) in word_items {
             if !seg_words.is_empty() {
-                let cur_h = (max_y - min_y).max(12.0 * scale_f);
-                let gap_limit = (cur_h * 2.2).max(28.0 * scale_f);
-                if wx0 > max_x + gap_limit {
-                    push_ocr_segment(
-                        &mut out, &seg_words, min_x, min_y, max_x, max_y, scale_f, pad_f, orig_w,
-                        orig_h, orig_bgra, origin_x, origin_y,
-                    );
+                let h_est = (max_y - min_y).max(12.0 * scale_f);
+                if wx0 > max_x + (h_est * 3.0).max(36.0 * scale_f) {
+                    let seg_txt = seg_words.join(" ");
+                    if seg_txt.chars().any(|c| c.is_alphanumeric()) {
+                        push_ocr_box(
+                            &mut out, seg_txt, min_x, min_y, max_x, max_y, scale_f, pad_f, orig_w,
+                            orig_h, orig_bgra, origin_x, origin_y,
+                        );
+                    }
                     seg_words.clear();
                     min_x = f32::INFINITY;
                     min_y = f32::INFINITY;
@@ -481,37 +451,20 @@ fn run_ocr_with_engine(
             max_x = max_x.max(wx1);
             max_y = max_y.max(wy1);
         }
-
-        push_ocr_segment(
-            &mut out, &seg_words, min_x, min_y, max_x, max_y, scale_f, pad_f, orig_w, orig_h,
-            orig_bgra, origin_x, origin_y,
-        );
+        let seg_txt = seg_words.join(" ");
+        if seg_txt.chars().any(|c| c.is_alphanumeric()) {
+            push_ocr_box(
+                &mut out, seg_txt, min_x, min_y, max_x, max_y, scale_f, pad_f, orig_w, orig_h,
+                orig_bgra, origin_x, origin_y,
+            );
+        }
     }
-    Ok(out)
-}
-
-fn should_upgrade_box(existing: &OcrLineBox, candidate: &OcrLineBox) -> bool {
-    let same_band = (candidate.y - existing.y).abs() < existing.height.max(candidate.height) * 0.65;
-    if !same_band {
-        return false;
-    }
-    let e_norm = existing.text.trim().to_lowercase();
-    let c_norm = candidate.text.trim().to_lowercase();
-    let e_alnum = e_norm.chars().filter(|c| c.is_alphanumeric()).count();
-    let c_alnum = c_norm.chars().filter(|c| c.is_alphanumeric()).count();
-    c_alnum > e_alnum && (c_norm.contains(&e_norm) || candidate.width >= existing.width * 1.35)
+    Ok((out, fallback_text))
 }
 
 fn merge_best_boxes(dst: &mut Vec<OcrLineBox>, extra: Vec<OcrLineBox>) {
     for candidate in extra {
-        if let Some(idx) = dst
-            .iter()
-            .position(|existing| boxes_overlap(existing, &candidate))
-        {
-            if should_upgrade_box(&dst[idx], &candidate) {
-                dst[idx] = candidate;
-            }
-        } else {
+        if !dst.iter().any(|existing| boxes_overlap(existing, &candidate)) {
             dst.push(candidate);
         }
     }
@@ -535,27 +488,40 @@ pub fn extract_text_offline(
     let bitmap = build_software_bitmap(ow, oh, &buf)?;
     let engines = collect_ocr_engines()?;
 
+    // Pass 1: Pure, unclipped ClearType OCR pass (matches original fast/accurate Windows OCR behavior).
     let mut line_boxes = Vec::new();
+    let mut fallback_res_text = String::new();
     for engine in &engines {
-        let found = run_ocr_with_engine(engine, &bitmap, scale_f, pad_f, w, h, bgra, origin_x, origin_y)?;
+        let (found, raw_txt) =
+            run_ocr_with_engine(engine, &bitmap, scale_f, pad_f, w, h, bgra, origin_x, origin_y)?;
+        if fallback_res_text.is_empty() && !raw_txt.is_empty() {
+            fallback_res_text = raw_txt;
+        }
         merge_best_boxes(&mut line_boxes, found);
     }
 
-    // Rescue passes: (1) inverted high-contrast for muted grey text in dark mode,
-    // (2) isolated bright-white glyph mask for shadowed desktop icons & light-on-color buttons.
-    let (dark_rescue, bright_rescue) = build_rescue_buffers(bgra);
-    for rescue_opt in [dark_rescue, bright_rescue] {
-        if let Some(rescue_src) = rescue_opt {
-            let (_, _, row, roh, rbuf) = prepare_ocr_buffer(w, h, &rescue_src);
-            if row == ow && roh == oh {
-                if let Ok(rbitmap) = build_software_bitmap(row, roh, &rbuf) {
-                    for engine in &engines {
-                        if let Ok(found) = run_ocr_with_engine(
-                            engine, &rbitmap, scale_f, pad_f, w, h, bgra, origin_x, origin_y,
-                        ) {
-                            merge_best_boxes(&mut line_boxes, found);
-                        }
+    // Fallback Pass 2: Smooth color inversion (zero harsh thresholding) ONLY if Pass 1 found nothing
+    // (helps muted dark-mode text selections without degrading normal ClearType results).
+    if line_boxes.is_empty() && fallback_res_text.is_empty() {
+        let inv_src = invert_bgra_smooth(bgra);
+        let (_, _, row, roh, rbuf) = prepare_ocr_buffer(w, h, &inv_src);
+        if let Ok(rbitmap) = build_software_bitmap(row, roh, &rbuf) {
+            for engine in &engines {
+                if let Ok((found, raw_txt)) = run_ocr_with_engine(
+                    engine,
+                    &rbitmap,
+                    scale_f,
+                    pad_f,
+                    w,
+                    h,
+                    bgra,
+                    origin_x,
+                    origin_y,
+                ) {
+                    if fallback_res_text.is_empty() && !raw_txt.is_empty() {
+                        fallback_res_text = raw_txt;
                     }
+                    merge_best_boxes(&mut line_boxes, found);
                 }
             }
         }
@@ -571,7 +537,11 @@ pub fn extract_text_offline(
     });
 
     let lines: Vec<String> = line_boxes.iter().map(|b| b.text.clone()).collect();
-    let text = lines.join("\n");
+    let text = if !lines.is_empty() {
+        lines.join("\n")
+    } else {
+        fallback_res_text
+    };
     let line_count = lines.len();
     Ok(OcrOutput {
         text,
@@ -675,7 +645,7 @@ mod tests {
     }
 
     #[test]
-    fn dark_rescue_pass_reads_muted_grey_dark_ui_text() {
+    fn dark_fallback_reads_muted_grey_dark_ui_text_cleanly() {
         let bgra = render_test_bgra(
             260,
             40,
@@ -686,34 +656,12 @@ mod tests {
             10,
             "Settings Sidebar Menu",
         );
-        let (dark_buf, _) = build_rescue_buffers(&bgra);
-        assert!(dark_buf.is_some());
-        let out = extract_text_offline(260, 40, &bgra, 0, 0).expect("dark rescue OCR failed");
+        let inv = invert_bgra_smooth(&bgra);
+        assert_eq!(inv[0], 255 - 27);
+        let out = extract_text_offline(260, 40, &bgra, 0, 0).expect("dark fallback OCR failed");
         assert!(
             out.text.contains("Settings") && out.text.contains("Menu"),
             "muted dark UI OCR missed text: {}",
-            out.text
-        );
-    }
-
-    #[test]
-    fn bright_rescue_reads_white_text_on_pastel_wallpaper() {
-        let bgra = render_test_bgra(
-            220,
-            42,
-            [214, 165, 180], // Lavender-purple wallpaper
-            0x00FFFFFF,      // Pure white desktop icon label
-            -13,
-            20,
-            14,
-            "Android Studio",
-        );
-        let (_, bright_buf) = build_rescue_buffers(&bgra);
-        assert!(bright_buf.is_some());
-        let out = extract_text_offline(220, 42, &bgra, 0, 0).expect("bright rescue OCR failed");
-        assert!(
-            out.text.contains("Android") && out.text.contains("Studio"),
-            "pastel desktop icon text missed: {}",
             out.text
         );
     }
