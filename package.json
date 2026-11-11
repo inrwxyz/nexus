@@ -1,0 +1,14 @@
+{
+  "name": "nexus",
+  "version": "1.0.0",
+  "description": "Nexus - Ambient Voice Automation",
+  "main": "ui/settings.html",
+  "scripts": {
+    "tauri": "tauri",
+    "build": "cargo tauri build",
+    "dev": "cargo tauri dev",
+    "clean": "cargo clean --manifest-path src-tauri/Cargo.toml"
+  },
+  "author": "inrwxyz",
+  "license": "GPL-3.0"
+}

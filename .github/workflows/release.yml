@@ -1,0 +1,38 @@
+name: 'Release Nexus'
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Tauri Application
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          NEXUS_STT_KEY: ${{ secrets.NEXUS_STT_KEY }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'Nexus v__VERSION__'
+          releaseBody: |
+            ## Nexus v__VERSION__
+
+            - Voice wake word & desktop automation (`Voice`)
+            - Screen selection, OCR, Translate, Visual Lens & Music Finder (`Circle to Search`)
+            - Built-in signed auto-updater
+          releaseDraft: false
+          prerelease: false

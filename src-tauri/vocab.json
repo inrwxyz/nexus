@@ -1,0 +1,22 @@
+{
+  "actions": {
+    "open": ["open", "launch", "start", "run", "kholo"],
+    "close": ["close", "quit", "exit", "shut down", "cut", "cut karo", "kete dao", "kato", "kat", "band karo", "bondho koro", "kill"],
+    "minimize": ["minimize", "minimise", "hide", "shrink"],
+    "maximize": ["maximize", "maximise", "fullscreen", "full screen", "enlarge"],
+    "focus": ["focus", "switch to", "show", "bring up"],
+    "play": ["play", "resume", "play music", "play song", "play the song", "chalao", "chala"],
+    "pause": ["pause", "stop music", "pause music", "pause song", "pause the song", "stop"],
+    "next": ["next song", "next track", "next", "skip song", "skip"],
+    "prev": ["previous song", "previous track", "previous", "prev song", "last song"],
+    "volume_up": ["volume up", "sound up", "louder", "increase volume"],
+    "volume_down": ["volume down", "sound down", "quieter", "decrease volume"],
+    "mute": ["mute", "unmute", "silence", "mike mute", "mic mute"]
+  },
+  "ignore": [
+    "please", "the", "a", "an", "my", "app", "application", "program", "window",
+    "can", "you", "could", "would", "will", "now", "just", "for", "me", "it",
+    "up", "to", "then", "on", "of", "get", "go",
+    "karo", "koro", "kardo", "kore", "dao", "korte", "mein", "par", "bhi", "yeh", "woh", "ta"
+  ]
+}

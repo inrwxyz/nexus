@@ -1,0 +1,67 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nexus",
+  "version": "1.0.0",
+  "identifier": "com.inrwxyz.nexus",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Nexus",
+        "url": "settings.html",
+        "width": 1100,
+        "height": 720,
+        "minWidth": 900,
+        "minHeight": 600,
+        "center": true,
+        "decorations": false,
+        "transparent": true,
+        "visible": true,
+        "resizable": true,
+        "shadow": true,
+        "skipTaskbar": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' 'unsafe-inline' data: blob: https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:*;"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "copyright": "Copyright © 2026 Inex. All rights reserved.",
+    "category": "Utility",
+    "shortDescription": "Nexus - Ambient Voice Automation",
+    "longDescription": "Intelligent, lightweight ambient voice assistant and system automation.",
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "resources": [
+      "../vocab.json",
+      "../aliases.json",
+      "../assets/*"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgxRjRFRDQwNkEwMjNBN0QKUldSOU9nSnFRTzMwZ2QxZy9xVDRQSUZFK2xwRFZwL3pQd0poa2U3ckpWRUN3UzVkWkJlRW8ySmQK",
+      "endpoints": [
+        "https://github.com/inrwxyz/nexus/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
