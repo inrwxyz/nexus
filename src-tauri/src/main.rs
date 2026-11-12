@@ -3968,8 +3968,13 @@ fn main() {
     server::start_server(settings_state.clone());
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            show_settings_window(app);
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            let silent = args
+                .iter()
+                .any(|a| a == "--silent" || a == "--daemon" || a == "--autostart");
+            if !silent {
+                show_settings_window(app);
+            }
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(settings_state.clone())
@@ -4080,12 +4085,13 @@ fn main() {
 
             let _ = tray_builder.build(app);
 
-            // If --silent / --daemon / --autostart, start hidden
+            // Main window starts hidden ("visible": false) so --silent boot never flashes a popup.
             let is_silent = settings::is_autostart_boot();
 
-            if is_silent {
+            if !is_silent {
                 if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.hide();
+                    let _ = w.show();
+                    let _ = w.set_focus();
                 }
             }
 

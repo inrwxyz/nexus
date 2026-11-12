@@ -1,6 +1,6 @@
 [package]
 name = "nexus"
-version = "1.0.0"
+version = "1.0.1"
 description = "Nexus - Ambient Voice Automation"
 authors = ["inrwxyz"]
 edition = "2021"

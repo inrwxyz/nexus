@@ -89,73 +89,44 @@ function buildPlaceholderPages() {
         `<div class="sheet"><div class="empty"><b>Nothing to configure yet</b>Settings for ${m.name} will appear here.</div></div>`);
     }
     const sysKick = String(m.tabs.length).padStart(2, '0');
-    mk('system', sysKick, 'Sys<em>tem</em>', `Turn ${m.name} on or off and choose whether it starts with Windows.`,
+    mk('system', sysKick, 'Sys<em>tem</em>', `Turn ${m.name} on or off.`,
       `<div class="sheet" id="sys-${key}"></div>`);
   }
 }
 
-// ── Per-module on/off + launch-at-login (lives in each module's System tab) ──
+// ── Per-module on/off (lives in each module's System tab) ──
 const MOD_KEYS = ['voice', 'search'];
 const MOD_BLURB = {
   voice: 'Wake word, voice commands and the corner pill',
   search: 'Circle anything on screen and search it',
 };
 const modState = {};
-const resetModState = () => MOD_KEYS.forEach(k => { modState[k] = { enabled: true, launch_at_login: false }; });
+const resetModState = () => MOD_KEYS.forEach(k => { modState[k] = { enabled: true }; });
 resetModState();
 
 const ICO_POWER = '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>';
-const ICO_LOGIN = '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></svg>';
 const sysRow = (ico, label, sub, attr, k, extra = '', subAttr = '') => `<div class="row${extra}"><div class="row-left"><div class="ico">${ico}</div><div class="row-text"><div class="row-label">${label}</div><div class="row-sub"${subAttr}>${sub}</div></div></div><div class="row-ctrl"><label class="switch"><input type="checkbox" ${attr}="${k}" /><span class="slider"></span></label></div></div>`;
 function buildModuleList() {
   MOD_KEYS.forEach(k => {
     const host = $(`#sys-${k}`); if (!host) return;
     const n = MODULES[k].name;
     host.innerHTML =
-      sysRow(ICO_POWER, `${n} on / off`, `Turn ${n} on or off`, 'data-mod-enabled', k, ' mod-power-row') +
-      sysRow(ICO_LOGIN, 'Launch at login', `Start ${n} automatically when Windows boots`, 'data-mod-login', k, ' mod-login-row', ` data-mod-login-sub="${k}"`);
+      sysRow(ICO_POWER, `${n} on / off`, `Turn ${n} on or off`, 'data-mod-enabled', k, ' mod-power-row');
     $$('[data-mod-enabled]', host).forEach(i => i.addEventListener('change', () => setModule(i.dataset.modEnabled, { enabled: i.checked })));
-    $$('[data-mod-login]', host).forEach(i => i.addEventListener('change', () => setModule(i.dataset.modLogin, { launch_at_login: i.checked })));
-    const loginRow = $('.mod-login-row', host);
-    if (loginRow) loginRow.addEventListener('click', () => {
-      if (!toggleStartup.checked) showSaveToast('Turn on Launch at Login in Settings → General first');
-      else if (!modState[k].enabled) showSaveToast(`Turn on ${n} above first`);
-    });
   });
 }
 function setModule(key, patch) {
   if (!modState[key]) return;
-  if ('launch_at_login' in patch && (!toggleStartup.checked || !modState[key].enabled)) {
-    applyModules();
-    showSaveToast(!toggleStartup.checked ? 'Turn on Launch at Login in Settings → General first' : `Turn on ${MODULES[key].name} above first`);
-    return;
-  }
   Object.assign(modState[key], patch);
   applyModules();
   const name = MODULES[key].name;
-  saveSettings('launch_at_login' in patch ? `${name}: start with Windows ${patch.launch_at_login ? 'on' : 'off'}` : `${name} ${patch.enabled ? 'on' : 'off'}`);
+  saveSettings(`${name} ${patch.enabled ? 'on' : 'off'}`);
 }
 function applyModules() {
-  const masterLogin = !!toggleStartup.checked;
-  if (!masterLogin) {
-    MOD_KEYS.forEach(k => { modState[k].launch_at_login = false; });
-  }
   MOD_KEYS.forEach(k => {
     const b = $(`.mod[data-module="${k}"]`); if (b) b.classList.toggle('off', !modState[k].enabled);
-    const en = $(`[data-mod-enabled="${k}"]`), lg = $(`[data-mod-login="${k}"]`), sub = $(`[data-mod-login-sub="${k}"]`);
+    const en = $(`[data-mod-enabled="${k}"]`);
     if (en) en.checked = modState[k].enabled;
-    if (lg) {
-      lg.checked = masterLogin && modState[k].enabled && modState[k].launch_at_login;
-      lg.disabled = !masterLogin || !modState[k].enabled;
-    }
-    if (sub) {
-      const n = MODULES[k].name;
-      sub.textContent = !masterLogin
-        ? 'Requires Launch at Login in Settings → General'
-        : !modState[k].enabled
-          ? `Turn on ${n} above first`
-          : `Start ${n} automatically when Windows boots`;
-    }
   });
   const isMod = MOD_KEYS.includes(curModule);
   $('#page').classList.toggle('module-off', isMod && !modState[curModule].enabled);
@@ -397,7 +368,7 @@ async function loadSettings() {
       if (typeof data.corner_pill === 'boolean')       toggleCorner.checked  = data.corner_pill;
       if (typeof data.launch_at_login === 'boolean')   toggleStartup.checked = data.launch_at_login;
       if (typeof data.auto_updater === 'boolean')      toggleUpdater.checked = data.auto_updater;
-      if (data.modules && typeof data.modules === 'object') MOD_KEYS.forEach(k => { const m = data.modules[k]; if (m) modState[k] = { enabled: m.enabled !== false, launch_at_login: !!m.launch_at_login }; });
+      if (data.modules && typeof data.modules === 'object') MOD_KEYS.forEach(k => { const m = data.modules[k]; if (m) modState[k] = { enabled: m.enabled !== false }; });
       if (data.circle_search && typeof data.circle_search === 'object') {
         csState.on_screen_trigger = !!data.circle_search.on_screen_trigger;
         if (data.circle_search.hotkey) csState.hotkey = data.circle_search.hotkey;
@@ -427,7 +398,7 @@ async function saveSettings(msg) {
   } catch (e) { console.log('Saved locally:', payload); }
 }
 selWakeWord.addEventListener('change', () => { syncUI(); saveSettings(); });
-[toggleCorner, toggleStartup, toggleUpdater].forEach(t => t.addEventListener('change', () => { syncUI(); applyModules(); saveSettings(); }));
+[toggleCorner, toggleStartup, toggleUpdater].forEach(t => t.addEventListener('change', () => { syncUI(); saveSettings(); }));
 
 // ── Window controls (Tauri window API) ─────────────────────────────────────
 const appWin = (() => { try { return T && T.window && (T.window.getCurrentWindow ? T.window.getCurrentWindow() : T.window.getCurrent()); } catch (e) { return null; } })();

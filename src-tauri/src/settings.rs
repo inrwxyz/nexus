@@ -32,13 +32,11 @@ fn default_true() -> bool {
 pub struct ModuleState {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default)]
-    pub launch_at_login: bool,
 }
 
 impl Default for ModuleState {
     fn default() -> Self {
-        Self { enabled: true, launch_at_login: false }
+        Self { enabled: true }
     }
 }
 
@@ -110,47 +108,27 @@ impl AuraSettings {
         self.modules.get(key).map(|m| m.enabled).unwrap_or(true)
     }
 
-    pub fn module_launch_at_login(&self, key: &str) -> bool {
-        self.launch_at_login
-            && self.module_enabled(key)
-            && self
-                .modules
-                .get(key)
-                .map(|m| m.launch_at_login)
-                .unwrap_or(false)
-    }
-
     pub fn module_should_run_now_with(&self, key: &str, autostart_boot: bool, unlocked: bool) -> bool {
         if !self.module_enabled(key) {
             return false;
         }
         if autostart_boot && !unlocked {
-            return self.module_launch_at_login(key);
+            return self.launch_at_login;
         }
         true
     }
 
     /// Unified runtime gate shared across all modules (`voice`, `search`).
-    /// On Windows `--silent` boot before manual user interaction, only modules with both main
-    /// `launch_at_login` and their own `launch_at_login` enabled should start.
+    /// On Windows `--silent` boot before manual user interaction, enabled modules run when
+    /// master `launch_at_login` is enabled.
     pub fn module_should_run_now(&self, key: &str) -> bool {
         self.module_should_run_now_with(key, is_autostart_boot(), is_boot_unlocked())
-    }
-
-    #[allow(dead_code)]
-    pub fn any_module_launches_at_login(&self) -> bool {
-        self.launch_at_login && self.modules.values().any(|m| m.enabled && m.launch_at_login)
     }
 
     pub fn normalize(&mut self) {
         self.modules.retain(|k, _| MODULE_KEYS.contains(&k.as_str()));
         for k in MODULE_KEYS {
             self.modules.entry(k.to_string()).or_default();
-        }
-        if !self.launch_at_login {
-            for m in self.modules.values_mut() {
-                m.launch_at_login = false;
-            }
         }
         if self.circle_search.hotkey.trim().is_empty() {
             self.circle_search.hotkey = default_cs_hotkey();
@@ -267,36 +245,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn master_launch_at_login_gates_module_logins() {
+    fn master_launch_at_login_and_module_enabled_gate_startup() {
         let mut s = AuraSettings::default();
         s.launch_at_login = false;
-        for k in MODULE_KEYS {
-            s.modules.get_mut(k).unwrap().launch_at_login = true;
-        }
-
         s.normalize();
+
         for k in MODULE_KEYS {
-            assert!(!s.module_launch_at_login(k), "{k} must turn off when master is off");
-            assert!(!s.modules[k].launch_at_login);
             assert!(!s.module_should_run_now_with(k, true, false));
             assert!(s.module_should_run_now_with(k, false, false));
         }
 
         s.launch_at_login = true;
-        s.modules.get_mut("search").unwrap().launch_at_login = true;
         s.normalize();
 
-        // At PC boot before manual interaction: only selected enabled sections start
+        // At PC boot with master launch_at_login enabled: all enabled sections run
         assert!(s.module_should_run_now_with("search", true, false));
-        assert!(!s.module_should_run_now_with("voice", true, false));
+        assert!(s.module_should_run_now_with("voice", true, false));
 
-        // Disabling a section blocks its autostart even if launch_at_login was true
+        // Disabling a section blocks its startup both at boot and after unlock
         s.modules.get_mut("search").unwrap().enabled = false;
-        assert!(!s.module_launch_at_login("search"));
         assert!(!s.module_should_run_now_with("search", true, false));
         assert!(!s.module_should_run_now_with("search", false, false));
+        assert!(!s.module_should_run_now_with("search", true, true));
 
-        // Opening Nexus manually runs all enabled sections
+        // Enabling after unlock still runs enabled sections
         assert!(s.module_should_run_now_with("voice", true, true));
 
         assert_eq!(s.circle_search.translate_mode, "in_place");
