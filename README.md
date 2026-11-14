@@ -8,6 +8,7 @@
 ## Features
 
 - **Voice**: Wake-word listener (`Hey Google`, `Jarvis`, `Hey PC`, `Alexa`), corner overlay pill, app launching, media controls, volume mixer, and browser search.
+- **Inex Island Integration**: Seamless IPC bridge with Inex Island (`\\.\pipe\inex_island_ipc`) for ambient wake, thinking, and completion status display.
 - **Circle to Search**: Screen region capture with offline Windows OCR, translation, Google Lens visual search, and desktop audio music finder.
 - **Auto Updates**: Built-in Tauri v2 updater with per-section System and Launch-at-Login controls.
 
