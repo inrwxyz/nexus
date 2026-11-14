@@ -24,6 +24,7 @@ $$('.theme-opt').forEach(b => b.addEventListener('click', () => {
 // ── Elements ───────────────────────────────────────────────────────────────
 const selWakeWord   = $('#sel-wakeword');
 const toggleCorner  = $('#toggle-corner');
+const toggleIsland  = $('#toggle-island');
 const toggleStartup = $('#toggle-startup');
 const toggleUpdater = $('#toggle-updater');
 const toast         = $('#save-toast');
@@ -366,6 +367,7 @@ async function loadSettings() {
     if (data) {
       if (data.wake_word)                              selWakeWord.value     = data.wake_word;
       if (typeof data.corner_pill === 'boolean')       toggleCorner.checked  = data.corner_pill;
+      if (typeof data.show_on_island === 'boolean' && toggleIsland) toggleIsland.checked = data.show_on_island;
       if (typeof data.launch_at_login === 'boolean')   toggleStartup.checked = data.launch_at_login;
       if (typeof data.auto_updater === 'boolean')      toggleUpdater.checked = data.auto_updater;
       if (data.modules && typeof data.modules === 'object') MOD_KEYS.forEach(k => { const m = data.modules[k]; if (m) modState[k] = { enabled: m.enabled !== false }; });
@@ -382,8 +384,11 @@ async function loadSettings() {
 }
 async function saveSettings(msg) {
   const payload = {
-    wake_word: selWakeWord.value, corner_pill: toggleCorner.checked,
-    launch_at_login: toggleStartup.checked, auto_updater: toggleUpdater.checked,
+    wake_word: selWakeWord.value,
+    corner_pill: toggleCorner.checked,
+    show_on_island: toggleIsland ? toggleIsland.checked : false,
+    launch_at_login: toggleStartup.checked,
+    auto_updater: toggleUpdater.checked,
     modules: JSON.parse(JSON.stringify(modState)),
     circle_search: { ...csState },
   };
@@ -398,7 +403,34 @@ async function saveSettings(msg) {
   } catch (e) { console.log('Saved locally:', payload); }
 }
 selWakeWord.addEventListener('change', () => { syncUI(); saveSettings(); });
-[toggleCorner, toggleStartup, toggleUpdater].forEach(t => t.addEventListener('change', () => { syncUI(); saveSettings(); }));
+toggleCorner.addEventListener('change', () => {
+  if (toggleCorner.checked && toggleIsland) {
+    toggleIsland.checked = false;
+  }
+  syncUI();
+  saveSettings(`Corner Pill ${toggleCorner.checked ? 'on' : 'off'}`);
+});
+if (toggleIsland) {
+  toggleIsland.addEventListener('change', async () => {
+    if (toggleIsland.checked) {
+      let installed = false;
+      try {
+        if (T && T.core) {
+          installed = await T.core.invoke('check_inex_island_installed');
+        }
+      } catch (_) {}
+      if (!installed) {
+        toggleIsland.checked = false;
+        showSaveToast('Inex Island is not installed on this PC!');
+        return;
+      }
+      toggleCorner.checked = false;
+    }
+    syncUI();
+    saveSettings(`Inex Island display ${toggleIsland.checked ? 'on' : 'off'}`);
+  });
+}
+[toggleStartup, toggleUpdater].forEach(t => t.addEventListener('change', () => { syncUI(); saveSettings(); }));
 
 // ── Window controls (Tauri window API) ─────────────────────────────────────
 const appWin = (() => { try { return T && T.window && (T.window.getCurrentWindow ? T.window.getCurrentWindow() : T.window.getCurrent()); } catch (e) { return null; } })();
@@ -443,7 +475,7 @@ resetRow.addEventListener('click', async () => {
   }
   disarmReset();
   selWakeWord.value = 'hey google';
-  toggleCorner.checked = true; toggleStartup.checked = false; toggleUpdater.checked = true;
+  toggleCorner.checked = true; if (toggleIsland) toggleIsland.checked = false; toggleStartup.checked = false; toggleUpdater.checked = true;
   resetModState();
   Object.assign(csState, { on_screen_trigger: false, hotkey: 'Ctrl+Shift+S', default_action: 'ask', target_lang: 'bn' });
   prefs.theme = 'dark'; savePrefs(); applyTheme();

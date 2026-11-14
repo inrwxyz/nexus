@@ -1,6 +1,6 @@
 [package]
 name = "nexus"
-version = "1.0.1"
+version = "1.0.2"
 description = "Nexus - Ambient Voice Automation"
 authors = ["inrwxyz"]
 edition = "2021"
@@ -41,6 +41,10 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Memory",
     "Win32_System_Shutdown",
     "Win32_System_Registry",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Pipes",
+    "Win32_Security",
+    "Win32_System_IO",
 ] }
 
 [profile.release]

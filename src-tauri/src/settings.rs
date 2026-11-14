@@ -95,6 +95,8 @@ impl Default for CircleSearchConfig {
 pub struct AuraSettings {
     pub wake_word: String,
     pub corner_pill: bool,
+    #[serde(default)]
+    pub show_on_island: bool,
     pub launch_at_login: bool,
     pub auto_updater: bool,
     #[serde(default = "default_modules")]
@@ -148,6 +150,9 @@ impl AuraSettings {
         ) {
             self.circle_search.translate_mode = default_cs_translate_mode();
         }
+        if self.show_on_island && self.corner_pill {
+            self.corner_pill = false;
+        }
     }
 }
 
@@ -156,6 +161,7 @@ impl Default for AuraSettings {
         Self {
             wake_word: "hey google".to_string(),
             corner_pill: true,
+            show_on_island: false,
             launch_at_login: false,
             auto_updater: true,
             modules: default_modules(),

@@ -6,6 +6,24 @@ use std::thread;
 
 use crate::settings::{save_settings, AuraSettings};
 
+fn get_allowed_origin(request: &str) -> Option<&'static str> {
+    for line in request.lines() {
+        let lower = line.to_ascii_lowercase();
+        if lower.starts_with("origin:") {
+            let val = line[7..].trim();
+            if val.starts_with("http://127.0.0.1:41780")
+                || val.starts_with("http://localhost:41780")
+                || val.starts_with("tauri://")
+                || val.starts_with("https://tauri.localhost")
+            {
+                return Some("http://127.0.0.1:41780");
+            }
+            return None;
+        }
+    }
+    Some("http://127.0.0.1:41780")
+}
+
 pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
     thread::spawn(move || {
         let listener = match TcpListener::bind("127.0.0.1:41780") {
@@ -27,11 +45,20 @@ pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
                     };
                     let request = String::from_utf8_lossy(&buffer[..bytes_read]);
 
+                    let allowed_origin = match get_allowed_origin(&request) {
+                        Some(o) => o,
+                        None => {
+                            let _ = stream.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 17\r\n\r\nOrigin not allowed");
+                            return;
+                        }
+                    };
+
                     if request.starts_with("GET /api/settings") {
                         let current = state_clone.lock().unwrap().clone();
                         let json = serde_json::to_string(&current).unwrap_or_default();
                         let response = format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: {}\r\nContent-Length: {}\r\n\r\n{}",
+                            allowed_origin,
                             json.len(),
                             json
                         );
@@ -44,7 +71,10 @@ pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
                                 *state_clone.lock().unwrap() = new_settings.clone();
                                 crate::voice::set_listening_allowed(new_settings.module_should_run_now("voice"));
                                 crate::modules::circle_search::sync_with_settings(&new_settings, true);
-                                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\n\r\n{\"status\":\"ok\"}";
+                                let resp = format!(
+                                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: {}\r\nContent-Length: 15\r\n\r\n{{\"status\":\"ok\"}}",
+                                    allowed_origin
+                                );
                                 let _ = stream.write_all(resp.as_bytes());
                             }
                         }
