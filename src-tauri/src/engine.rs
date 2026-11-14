@@ -8,10 +8,10 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::app_launcher::{self, App, scan_apps};
 use crate::executor::execute_command;
-use crate::input::MessageBeep;
 use crate::island_bridge;
 use crate::pill;
 use crate::settings;
+use crate::sound;
 use crate::vocab::{load_aliases, load_vocab, Vocab};
 use crate::voice;
 use crate::wake_word::{ask, extract_command};
@@ -104,9 +104,7 @@ pub fn start_voice_engine(settings_state: Arc<Mutex<settings::AuraSettings>>, ap
 
                     if let Some(cmd) = matched_cmd {
                         if cmd.is_empty() {
-                            unsafe {
-                                MessageBeep(0x00000040);
-                            }
+                            sound::play_wake_chime();
 
                             if island_enabled {
                                 island_bridge::notify_wake();
@@ -176,9 +174,7 @@ pub fn start_voice_engine(settings_state: Arc<Mutex<settings::AuraSettings>>, ap
                                 else if show_pill { pill.hide(); }
                             }
                         } else {
-                            unsafe {
-                                MessageBeep(0x00000040);
-                            }
+                            sound::play_wake_chime();
 
                             if island_enabled {
                                 island_bridge::notify_thinking(Some(&cmd));

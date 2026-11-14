@@ -13,6 +13,7 @@ pub mod pill;
 pub mod safety;
 pub mod server;
 pub mod settings;
+pub mod sound;
 pub mod spotify;
 pub mod vocab;
 pub mod voice;
