@@ -1,12 +1,9 @@
 use std::collections::HashMap;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-};
+use std::sync::{atomic::Ordering, Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
-use crate::app_launcher::{self, App, scan_apps};
+use crate::app_launcher::{App, scan_apps};
 use crate::executor::execute_command;
 use crate::island_bridge;
 use crate::pill;

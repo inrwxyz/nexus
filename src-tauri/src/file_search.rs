@@ -1,5 +1,4 @@
 use std::io::{self, Write};
-use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
 use crate::wake_word::{norm, score};

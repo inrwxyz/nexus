@@ -1,8 +1,6 @@
-use std::os::windows::process::CommandExt;
-use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
-use windows_sys::Win32::Foundation::{CloseHandle, HWND};
+use windows_sys::Win32::Foundation::CloseHandle;
 use windows_sys::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
 };

@@ -3,34 +3,40 @@ use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_MEMORY, SND_NO
 
 static WAKE_CHIME_WAV: OnceLock<Vec<u8>> = OnceLock::new();
 
-/// Synthesize a smooth, high-fidelity ambient assistant chime in-memory (RIFF WAVE, 44.1kHz 16-bit Mono).
-/// Notes: D5 (587.33 Hz) -> A5 (880.00 Hz) with a delicate harmonic sparkle and zero click/pop.
+/// Synthesize a subtle, warm, lightweight ambient assistant chime in-memory (RIFF WAVE, 44.1kHz 16-bit Mono).
+/// Notes: C5 (523.25 Hz) -> G5 (783.99 Hz) with a smooth raised-cosine attack and fast natural decay.
+/// Gentle gain (~0.28) ensures it is soft, pleasant, and non-intrusive ("halka").
 pub fn synthesize_nexus_chime() -> Vec<u8> {
     let sample_rate: u32 = 44100;
-    let duration_secs: f32 = 0.38;
+    let duration_secs: f32 = 0.22;
     let total_samples = (sample_rate as f32 * duration_secs) as usize;
     let mut pcm: Vec<f32> = vec![0.0; total_samples];
 
-    // Modern ascending two-tone glass chime (D5 -> A5)
-    let notes: [(f32, f32, f32); 2] = [
-        (587.33, 0.000, 0.32), // D5: warm, pleasant introductory tone
-        (880.00, 0.080, 0.42), // A5: bright, clear ascending confirmation
+    // Lightweight two-tone ambient droplet (C5 -> G5)
+    let notes: [(f32, f32, f32, f32); 2] = [
+        (523.25, 0.000, 0.45, 22.0), // C5: soft initial tap
+        (783.99, 0.040, 0.65, 17.0), // G5: warm ascending harmonic cue
     ];
 
-    for (freq, delay, vol) in notes {
+    let attack_len = (0.010 * sample_rate as f32) as usize;
+
+    for (freq, delay, vol, decay_rate) in notes {
         let start = (delay * sample_rate as f32) as usize;
         for i in start..total_samples {
-            let t = (i - start) as f32 / sample_rate as f32;
-            let attack = (t / 0.006).min(1.0);
-            let decay = (-t * 7.5).exp();
-            // Fundamental sine wave + soft 2nd harmonic (18%) for warm acoustic bell character
-            let sig = (2.0 * std::f32::consts::PI * freq * t).sin()
-                + 0.18 * (4.0 * std::f32::consts::PI * freq * t).sin();
+            let offset = i - start;
+            let t = offset as f32 / sample_rate as f32;
+            let attack = if offset < attack_len {
+                0.5 * (1.0 - (std::f32::consts::PI * (offset as f32 / attack_len as f32)).cos())
+            } else {
+                1.0
+            };
+            let decay = (-t * decay_rate).exp();
+            let sig = (2.0 * std::f32::consts::PI * freq * t).sin();
             pcm[i] += sig * vol * attack * decay;
         }
     }
 
-    // Peak normalize to prevent any digital distortion
+    // Peak normalize and apply soft, gentle gain (0.28)
     let mut max_val = 0.0f32;
     for &sample in &pcm {
         let abs = sample.abs();
@@ -44,8 +50,8 @@ pub fn synthesize_nexus_chime() -> Vec<u8> {
 
     let mut raw_pcm = Vec::with_capacity(total_samples * 2);
     for sample in pcm {
-        let normalized = (sample / max_val) * 0.85;
-        let clamped = (normalized * 32767.0).clamp(-32768.0, 32767.0) as i16;
+        let scaled = (sample / max_val) * 0.28;
+        let clamped = (scaled * 32767.0).clamp(-32768.0, 32767.0) as i16;
         raw_pcm.extend_from_slice(&clamped.to_le_bytes());
     }
 

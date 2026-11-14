@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use std::os::windows::process::CommandExt;
 use std::process::Command;
 use std::time::Duration;
-use crate::app_launcher::{self, App, LAST_YOUTUBE_VIDEOS, launch_app_smart, open_url_in_target_browser, parse_search_intent};
-use crate::file_search::{self, handle_file_explorer};
-use crate::input::{self, scroll, send_alt_key, send_ctrl_key, send_key, send_shift_key, set_clipboard};
+use crate::app_launcher::{App, LAST_YOUTUBE_VIDEOS, launch_app_smart, open_url_in_target_browser, parse_search_intent};
+use crate::file_search::handle_file_explorer;
+use crate::input::{scroll, send_key};
 use crate::media_native;
 use crate::modules;
 use crate::spotify::{ is_sp_target, launch_spotify, open_spotify_app, sp_previous, SP_SESSION};
