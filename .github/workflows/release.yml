@@ -57,9 +57,9 @@ jobs:
           prerelease: false
 
       - name: Upload Android Companion APK
-        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: NexusCompanion.apk
+        shell: cmd
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python .github/scripts/upload_apk.py
