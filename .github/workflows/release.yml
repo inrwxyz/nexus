@@ -25,7 +25,7 @@ jobs:
         shell: cmd
         run: |
           cd NexusCompanion
-          call gradlew.bat assembleRelease
+          call gradlew.bat assembleRelease -Dorg.gradle.java.home="%JAVA_HOME%"
           copy app\build\outputs\apk\release\app-release.apk ..\NexusCompanion.apk
 
       - name: Setup Rust
