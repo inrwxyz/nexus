@@ -2,9 +2,16 @@
 target/
 src-tauri/target/
 src-tauri/gen/
-Cargo.lock
-src-tauri/Cargo.lock
 dist/
+
+# Android build targets & caches
+.gradle/
+NexusCompanion/.gradle/
+NexusCompanion/build/
+NexusCompanion/app/build/
+NexusCompanion/local.properties
+*.apk
+*.aab
 
 # Node dependencies & logs
 node_modules/

@@ -33,9 +33,6 @@ pub struct Heard {
     pub audio_secs: f32,
 
     pub took_secs: f32,
-
-    #[allow(dead_code)]
-    pub peak: f32,
 }
 
 pub struct Voice {
@@ -495,8 +492,6 @@ impl Voice {
                         audio_secs,
 
                         took_secs: t.elapsed().as_secs_f32(),
-
-                        peak,
                     }));
                 }
             }

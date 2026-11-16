@@ -1,42 +1,17 @@
-use std::collections::HashMap;
 use std::sync::{atomic::Ordering, Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
-use crate::app_launcher::{App, scan_apps};
+use crate::app_launcher::scan_apps;
 use crate::executor::execute_command;
 use crate::island_bridge;
 use crate::pill;
 use crate::settings;
 use crate::sound;
-use crate::vocab::{load_aliases, load_vocab, Vocab};
+use crate::vocab::{load_aliases, load_vocab};
 use crate::voice;
-use crate::wake_word::{ask, extract_command};
+use crate::wake_word::extract_command;
 use crate::MIC_MUTED;
-
-pub fn run_text_mode(
-    vocab: &Vocab,
-
-    mut apps: &mut Vec<App>,
-
-    mut aliases: &mut HashMap<String, String>,
-) {
-    println!("\nType commands: open <app> [left/right/fullscreen] / close <app> / play <song> / volume 50% / lock / shutdown");
-
-    println!("Commands: 'apps', 'windows', 'q' to quit.\n");
-
-    loop {
-        let line = ask("> ");
-
-        let line = line.trim();
-
-        if line.eq_ignore_ascii_case("q") {
-            break;
-        }
-
-        execute_command(line, vocab, &mut apps, &mut aliases, None);
-    }
-}
 
 pub fn start_voice_engine(settings_state: Arc<Mutex<settings::AuraSettings>>, app: AppHandle) {
     let vocab = load_vocab();

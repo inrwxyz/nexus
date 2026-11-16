@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use std::io::{self, Write};
-use std::os::windows::process::CommandExt;
-use std::process::Command;
 use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
@@ -219,6 +217,12 @@ pub fn window_action(action: &str, i: usize, wins: &[Win]) {
 
 // ---------- smart resolver with auto-pick and voice choice ----------
 
+thread_local! {
+    /// Phone relay sets this to true so an ambiguous app match auto-picks the best one
+    /// (nobody can answer a console/voice prompt when the command comes from the phone).
+    pub static AUTO_PICK: std::cell::Cell<bool> = std::cell::Cell::new(false);
+}
+
 pub fn resolve<F>(
     target: &str,
 
@@ -287,6 +291,11 @@ where
     let cand_count = ranked.len().min(5);
 
     if cand_count == 1 {
+        return Some(best.0);
+    }
+
+    // Phone relay: no one to ask, so take the best match instead of cancelling.
+    if AUTO_PICK.with(|f| f.get()) {
         return Some(best.0);
     }
 
@@ -400,22 +409,7 @@ where
 #[allow(dead_code)]
 
 pub fn kill_processes_by_name(exe_name: &str) -> bool {
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-    let target = if exe_name.ends_with(".exe") {
-        exe_name.to_string()
-    } else {
-        format!("{}.exe", exe_name)
-    };
-
-    let status = Command::new("taskkill")
-        .args(["/F", "/T", "/IM", &target])
-        .creation_flags(CREATE_NO_WINDOW)
-        .status();
-
-    match status {
-        Ok(s) => s.success(),
-        Err(_) => false,
-    }
+    crate::native_cmds::kill_by_name(exe_name)
 }
 
 pub fn close_app(name: &str) -> bool {

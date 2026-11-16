@@ -48,6 +48,7 @@ const MODULES = {
   search:   { name: 'Circle to Search', tabs: [['overview', 'Overview'], ['config', 'Configuration'], ['system', 'System']],
               info: SOON('Circle to Search', 'Draw around anything on your screen and search it instantly.',
                 [['Screen selection', 'Circle or drag over any part of the screen'], ['Offline OCR', 'Extract text directly using Windows OCR'], ['Google Lens', 'Visual search any region in one click']]) },
+  companion: { name: 'Phone Link', tabs: [['pairing', 'Pairing'], ['features', 'Features'], ['system', 'System']] },
   settings: { name: 'Settings', tabs: [['general', 'General'], ['theme', 'Theme'], ['about', 'About'], ['reset', 'Reset']] },
 };
 
@@ -96,10 +97,11 @@ function buildPlaceholderPages() {
 }
 
 // ── Per-module on/off (lives in each module's System tab) ──
-const MOD_KEYS = ['voice', 'search'];
+const MOD_KEYS = ['voice', 'search', 'companion'];
 const MOD_BLURB = {
   voice: 'Wake word, voice commands and the corner pill',
   search: 'Circle anything on screen and search it',
+  companion: 'Hands-free voice relay and 120Hz trackpad',
 };
 const modState = {};
 const resetModState = () => MOD_KEYS.forEach(k => { modState[k] = { enabled: true }; });
@@ -349,6 +351,7 @@ function syncUI() {
     if (sel === selWakeWord) setText($('#wake-word'), lbl);
   });
   syncCircleSearchUI();
+  syncCompanionUI();
   const cap = (id, on) => { $(id).classList.toggle('on', on); setText($(id + '-v'), on ? 'On' : 'Off'); };
   cap('#cap-corner',  toggleCorner.checked);
   cap('#cap-updater', toggleUpdater.checked);
@@ -357,6 +360,136 @@ function syncUI() {
 [['#cap-corner', toggleCorner], ['#cap-updater', toggleUpdater]].forEach(([sel, input]) => {
   $(sel).addEventListener('click', () => input.click());
 });
+
+// ── Companion / Phone Link Controller ──────────────────────────────────────
+const compState = {
+  voice_relay: true,
+  touchpad: true,
+  inertia_scrolling: true,
+  sensitivity: 1.2,
+  show_on_island: true,
+  paired_device: null,
+  auth_token: null,
+  pairing_code: null,
+};
+
+const toggleCompVoice    = $('#toggle-comp-voice');
+const toggleCompIsland   = $('#toggle-comp-island');
+const toggleCompTrackpad = $('#toggle-comp-trackpad');
+const toggleCompInertia  = $('#toggle-comp-inertia');
+const sliderCompSens     = $('#comp-sens-slider');
+const valCompSens        = $('#comp-sens-val');
+const btnCompUnpair      = $('#btn-comp-unpair');
+const rowCompUnpaired    = $('#row-comp-unpaired');
+const rowCompPaired      = $('#row-comp-paired');
+const compDeviceLabel    = $('#comp-device-label');
+const compQr             = $('#comp-qr');
+
+function syncCompanionUI() {
+  if (toggleCompVoice)    toggleCompVoice.checked    = compState.voice_relay;
+  if (toggleCompIsland)   toggleCompIsland.checked   = compState.show_on_island !== false;
+  if (toggleCompTrackpad) toggleCompTrackpad.checked = compState.touchpad;
+  if (toggleCompInertia)  toggleCompInertia.checked  = compState.inertia_scrolling;
+  if (sliderCompSens) {
+    sliderCompSens.value = compState.sensitivity;
+    if (valCompSens) valCompSens.textContent = `${compState.sensitivity.toFixed(1)}x`;
+  }
+}
+
+let lastQrSvg = '';
+
+async function refreshCompanionPairingUI() {
+  try {
+    let info;
+    if (T && T.core) {
+      info = await T.core.invoke('get_companion_pairing_info');
+    } else {
+      const res = await fetch('/api/companion/status');
+      if (res.ok) info = await res.json();
+    }
+    if (!info) return;
+
+    if (info.paired) {
+      if (rowCompUnpaired) rowCompUnpaired.style.display = 'none';
+      if (rowCompPaired) rowCompPaired.style.display = 'flex';
+      if (compDeviceLabel) compDeviceLabel.textContent = info.device || 'Paired Device';
+      lastQrSvg = '';
+    } else {
+      if (rowCompUnpaired) rowCompUnpaired.style.display = 'flex';
+      if (rowCompPaired) rowCompPaired.style.display = 'none';
+      if (compQr && info.qr_svg && info.qr_svg !== lastQrSvg) {
+        lastQrSvg = info.qr_svg;
+        compQr.innerHTML = info.qr_svg;
+        const sv = compQr.querySelector('svg');
+        if (sv) { sv.setAttribute('width', '200'); sv.setAttribute('height', '200'); }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to refresh companion info:', e);
+  }
+}
+
+// While the Phone Link page is on screen and showing the QR, check every few seconds so it flips to
+// "Paired" right after the phone scans. Idle otherwise.
+setInterval(() => {
+  const page = document.getElementById('page-companion-pairing');
+  const showingQr = rowCompUnpaired && rowCompUnpaired.style.display !== 'none';
+  if (!document.hidden && page && page.offsetParent !== null && showingQr) refreshCompanionPairingUI();
+}, 2500);
+
+if (btnCompUnpair) {
+  btnCompUnpair.addEventListener('click', async () => {
+    try {
+      if (T && T.core) {
+        await T.core.invoke('unpair_companion_device');
+      } else {
+        await fetch('/api/companion/unpair', { method: 'POST' });
+      }
+      showSaveToast('Device unpaired');
+      await refreshCompanionPairingUI();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+if (toggleCompVoice) {
+  toggleCompVoice.addEventListener('change', () => {
+    compState.voice_relay = toggleCompVoice.checked;
+    saveSettings(`Voice relay ${toggleCompVoice.checked ? 'on' : 'off'}`);
+  });
+}
+
+if (toggleCompIsland) {
+  toggleCompIsland.addEventListener('change', () => {
+    compState.show_on_island = toggleCompIsland.checked;
+    saveSettings(`Phone commands on Island ${toggleCompIsland.checked ? 'on' : 'off'}`);
+  });
+}
+
+if (toggleCompTrackpad) {
+  toggleCompTrackpad.addEventListener('change', () => {
+    compState.touchpad = toggleCompTrackpad.checked;
+    saveSettings(`Trackpad ${toggleCompTrackpad.checked ? 'on' : 'off'}`);
+  });
+}
+
+if (toggleCompInertia) {
+  toggleCompInertia.addEventListener('change', () => {
+    compState.inertia_scrolling = toggleCompInertia.checked;
+    saveSettings(`Inertia scrolling ${toggleCompInertia.checked ? 'on' : 'off'}`);
+  });
+}
+
+if (sliderCompSens) {
+  sliderCompSens.addEventListener('input', () => {
+    compState.sensitivity = parseFloat(sliderCompSens.value);
+    if (valCompSens) valCompSens.textContent = `${compState.sensitivity.toFixed(1)}x`;
+  });
+  sliderCompSens.addEventListener('change', () => {
+    saveSettings('Trackpad sensitivity updated');
+  });
+}
 
 // ── Load / Save ────────────────────────────────────────────────────────────
 async function loadSettings() {
@@ -378,9 +511,19 @@ async function loadSettings() {
         if (data.circle_search.target_lang) csState.target_lang = data.circle_search.target_lang;
         if (data.circle_search.translate_mode) csState.translate_mode = data.circle_search.translate_mode;
       }
+      if (data.companion && typeof data.companion === 'object') {
+        compState.voice_relay = data.companion.voice_relay !== false;
+        compState.show_on_island = data.companion.show_on_island !== false;
+        compState.touchpad = data.companion.touchpad !== false;
+        compState.inertia_scrolling = data.companion.inertia_scrolling !== false;
+        if (typeof data.companion.sensitivity === 'number') compState.sensitivity = data.companion.sensitivity;
+        compState.paired_device = data.companion.paired_device || null;
+        compState.auth_token = data.companion.auth_token || null;
+        compState.pairing_code = data.companion.pairing_code || null;
+      }
     }
   } catch (e) { console.log('Using default settings'); }
-  syncUI(); applyModules(); refreshCsStatus();
+  syncUI(); applyModules(); refreshCsStatus(); refreshCompanionPairingUI();
 }
 async function saveSettings(msg) {
   const payload = {
@@ -391,6 +534,7 @@ async function saveSettings(msg) {
     auto_updater: toggleUpdater.checked,
     modules: JSON.parse(JSON.stringify(modState)),
     circle_search: { ...csState },
+    companion: { ...compState },
   };
   showSaveToast(typeof msg === 'string' ? msg : 'Settings saved');
   try {

@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Nexus" parent="android:Theme.Material.NoActionBar" />
+    <style name="Theme.Nexus.Translucent" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+</resources>

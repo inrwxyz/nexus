@@ -2,6 +2,10 @@
 
 pub mod app_launcher;
 pub mod audio_native;
+pub mod audio_switch;
+pub mod audio_stream;
+pub mod native_cmds;
+pub mod companion;
 pub mod engine;
 pub mod executor;
 pub mod file_search;
@@ -15,6 +19,7 @@ pub mod server;
 pub mod settings;
 pub mod sound;
 pub mod spotify;
+pub mod trackpad;
 pub mod vocab;
 pub mod voice;
 pub mod volume;
@@ -138,6 +143,21 @@ fn close_settings(app: AppHandle) {
     }
 }
 
+#[tauri::command]
+fn get_companion_pairing_info(
+    state: tauri::State<Arc<Mutex<settings::AuraSettings>>>,
+) -> serde_json::Value {
+    let mut s = state.lock().unwrap();
+    companion::pairing_info(&mut s)
+}
+
+#[tauri::command]
+fn unpair_companion_device(state: tauri::State<Arc<Mutex<settings::AuraSettings>>>) -> bool {
+    let mut s = state.lock().unwrap();
+    companion::revoke(&mut s);
+    true
+}
+
 #[derive(serde::Serialize)]
 struct UpdateCheck {
     available: bool,
@@ -216,7 +236,6 @@ fn update_tray_mute_label(muted: bool) {
     }
 }
 
-#[tauri::command]
 fn set_mic_mute(app: tauri::AppHandle, muted: bool) -> bool {
     MIC_MUTED.store(muted, Ordering::SeqCst);
     let _ = app.emit("mic-mute-changed", serde_json::json!({ "muted": muted }));
@@ -262,6 +281,10 @@ fn main() {
     // Background voice engine is spawned inside setup with AppHandle
     // Start HTTP server on 41780 (for external bridge & compatibility)
     server::start_server(settings_state.clone());
+    // Cache the installed-app list once so phone commands never rescan the disk
+    companion::warm_up();
+    // Start low-latency UDP Trackpad listener on 41781 (for Phone Link)
+    trackpad::start_trackpad_listener(settings_state.clone());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -279,10 +302,11 @@ fn main() {
             get_settings,
             save_settings,
             close_settings,
+            get_companion_pairing_info,
+            unpair_companion_device,
             check_update,
             apply_update,
             get_mic_mute,
-            set_mic_mute,
             toggle_mic_mute,
             open_browser,
             modules::circle_search::trigger_circle_search,
@@ -291,13 +315,11 @@ fn main() {
             modules::circle_search::close_circle_search_overlay,
             modules::circle_search::process_circle_selection,
             modules::circle_search::lens_visual_search,
-            modules::circle_search::visual_search_selection,
             modules::circle_search::translate_selection,
             modules::circle_search::google_translate_image,
             modules::circle_search::recognize_desktop_music,
             modules::circle_search::copy_circle_text,
             modules::circle_search::search_circle_text,
-            modules::circle_search::open_external_url,
             modules::circle_search::get_circle_search_status
         ])
         .setup(move |app| {
@@ -376,20 +398,28 @@ fn main() {
                     }
                 });
 
-            if let Some(icon) = app.default_window_icon() {
-                tray_builder = tray_builder.icon(icon.clone());
+            if let Some(icon) = app
+                .default_window_icon()
+                .cloned()
+                .or_else(|| tauri::image::Image::from_app_icon_resource(32).ok())
+            {
+                tray_builder = tray_builder.icon(icon);
             }
 
-            let _ = tray_builder.build(app);
+            match tray_builder.build(app) {
+                Ok(_) => println!("✅ Tray icon created successfully"),
+                Err(e) => eprintln!("❌ Tray icon failed to build: {e}"),
+            }
 
-            // Main window starts hidden ("visible": false) so --silent boot never flashes a popup.
+            // If --silent was passed on autostart boot, hide window into tray; otherwise show settings.
             let is_silent = settings::is_autostart_boot();
 
-            if !is_silent {
+            if is_silent {
                 if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
+                    let _ = w.hide();
                 }
+            } else {
+                show_settings_window(app.handle());
             }
 
             Ok(())

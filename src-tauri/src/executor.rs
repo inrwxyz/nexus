@@ -229,6 +229,10 @@ pub fn execute_single_command(
         return true;
     }
 
+    if let Some(ok) = crate::native_cmds::try_handle(&lnorm) {
+        return ok;
+    }
+
     if lnorm == "shutdown"
         || lnorm == "shutdown pc"
         || lnorm == "turn off pc"

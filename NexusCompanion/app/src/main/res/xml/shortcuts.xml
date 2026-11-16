@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:shortcutId="voice"
+        android:shortcutShortLabel="@string/shortcut_voice"
+        android:shortcutLongLabel="@string/shortcut_voice_long">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetClass="com.inex.nexuscompanion.VoiceActivity"
+            android:targetPackage="com.inex.nexuscompanion" />
+    </shortcut>
+</shortcuts>

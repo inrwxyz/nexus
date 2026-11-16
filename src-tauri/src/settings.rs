@@ -40,7 +40,7 @@ impl Default for ModuleState {
     }
 }
 
-pub const MODULE_KEYS: [&str; 2] = ["voice", "search"];
+pub const MODULE_KEYS: [&str; 3] = ["voice", "search", "companion"];
 
 fn default_modules() -> HashMap<String, ModuleState> {
     MODULE_KEYS
@@ -91,6 +91,45 @@ impl Default for CircleSearchConfig {
     }
 }
 
+fn default_sensitivity() -> f32 {
+    1.2
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompanionConfig {
+    #[serde(default = "default_true")]
+    pub voice_relay: bool,
+    #[serde(default = "default_true")]
+    pub touchpad: bool,
+    #[serde(default = "default_true")]
+    pub inertia_scrolling: bool,
+    #[serde(default = "default_sensitivity")]
+    pub sensitivity: f32,
+    #[serde(default = "default_true")]
+    pub show_on_island: bool,
+    #[serde(default)]
+    pub paired_device: Option<String>,
+    #[serde(default)]
+    pub auth_token: Option<String>,
+    #[serde(default)]
+    pub pairing_code: Option<String>,
+}
+
+impl Default for CompanionConfig {
+    fn default() -> Self {
+        Self {
+            voice_relay: true,
+            touchpad: true,
+            inertia_scrolling: true,
+            sensitivity: 1.2,
+            show_on_island: true,
+            paired_device: None,
+            auth_token: None,
+            pairing_code: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuraSettings {
     pub wake_word: String,
@@ -103,6 +142,8 @@ pub struct AuraSettings {
     pub modules: HashMap<String, ModuleState>,
     #[serde(default)]
     pub circle_search: CircleSearchConfig,
+    #[serde(default)]
+    pub companion: CompanionConfig,
 }
 
 impl AuraSettings {
@@ -153,6 +194,9 @@ impl AuraSettings {
         if self.show_on_island && self.corner_pill {
             self.corner_pill = false;
         }
+        if self.companion.sensitivity <= 0.1 || self.companion.sensitivity > 5.0 {
+            self.companion.sensitivity = default_sensitivity();
+        }
     }
 }
 
@@ -166,6 +210,7 @@ impl Default for AuraSettings {
             auto_updater: true,
             modules: default_modules(),
             circle_search: CircleSearchConfig::default(),
+            companion: CompanionConfig::default(),
         }
     }
 }

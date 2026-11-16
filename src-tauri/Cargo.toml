@@ -1,6 +1,6 @@
 [package]
 name = "nexus"
-version = "1.0.3"
+version = "1.0.4"
 description = "Nexus - Ambient Voice Automation"
 authors = ["inrwxyz"]
 edition = "2021"
@@ -23,7 +23,9 @@ reqwest = { version = "0.13", features = ["multipart", "json"] }
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 crc32fast = "1"
-windows = { version = "0.59", features = ["Media_Control", "Media_Ocr", "Graphics_Imaging", "Security_Cryptography", "Storage_Streams", "Globalization", "Foundation", "Foundation_Collections", "Win32_Foundation", "Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell_PropertiesSystem"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+windows-core = "0.59"
+windows = { version = "0.59", features = ["Win32_Devices_FunctionDiscovery", "Win32_NetworkManagement_IpHelper", "Media_Control", "Media_Ocr", "Graphics_Imaging", "Security_Cryptography", "Storage_Streams", "Globalization", "Foundation", "Foundation_Collections", "Win32_Foundation", "Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell_PropertiesSystem"] }
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_System_Threading",
@@ -45,6 +47,7 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Pipes",
     "Win32_Security",
     "Win32_System_IO",
+    "Win32_System_Power",
 ] }
 
 [profile.release]

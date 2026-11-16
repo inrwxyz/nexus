@@ -122,3 +122,23 @@ pub fn app(targets: &[&str], ch: Change) -> bool {
         }
     }
 }
+
+/// (exe name, volume 0..1, muted) for every active session on the default device.
+pub fn sessions() -> Vec<(String, f32, bool)> {
+    unsafe {
+        let run = || -> windows::core::Result<Vec<(String, f32, bool)>> {
+            let mgr: IAudioSessionManager2 = device()?.Activate(CLSCTX_ALL, None)?;
+            let ss = mgr.GetSessionEnumerator()?;
+            let mut out = Vec::new();
+            for i in 0..ss.GetCount()? {
+                let ctl = ss.GetSession(i)?;
+                let pid = ctl.cast::<IAudioSessionControl2>()?.GetProcessId()?;
+                if pid == 0 { continue; }
+                let sav: ISimpleAudioVolume = ctl.cast()?;
+                out.push((exe_stem(pid), sav.GetMasterVolume()?, sav.GetMute()?.as_bool()));
+            }
+            Ok(out)
+        };
+        run().unwrap_or_default()
+    }
+}
