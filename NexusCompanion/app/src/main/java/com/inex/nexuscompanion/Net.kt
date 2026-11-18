@@ -99,11 +99,8 @@ class Net {
         this.addr = null
     }
 
-    val audioPlayer = PcAudioPlayer()
-
     fun clear() {
         token = ""
-        audioPlayer.stop()
         try { socket?.close() } catch (_: Exception) {}
         socket = null
     }
@@ -239,14 +236,6 @@ fun up(btn: String) = udp("{\"token\":\"$token\",\"type\":\"up\",\"btn\":\"$btn\
         val body = JSONObject().put("id", idOrKind).put("kind", idOrKind).toString()
         val r = http(ip, port, "POST", "/api/companion/audio/switch", body, token, readMs = 5000) ?: return false
         return r.code == 200 && r.json?.optBoolean("success") == true
-    }
-
-    /** start=true -> returns sample rate, or null on failure */
-    suspend fun audioStream(start: Boolean, udpPort: Int = 41782): Int? {
-        val body = JSONObject().put("action", if (start) "start" else "stop").put("port", udpPort).toString()
-        val r = http(ip, port, "POST", "/api/companion/audio/stream", body, token, readMs = 5000) ?: return null
-        if (r.code != 200) return null
-        return r.json?.optInt("rate", 48000) ?: 48000
     }
 
     /** Wake-on-LAN magic packet: 6x0xFF + 16xMAC. */

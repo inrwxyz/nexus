@@ -1,6 +1,6 @@
 [package]
 name = "nexus"
-version = "1.0.4"
+version = "1.0.5"
 description = "Nexus - Ambient Voice Automation"
 authors = ["inrwxyz"]
 edition = "2021"
@@ -10,6 +10,8 @@ default-run = "nexus"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+rust-scrcpy = { path = "../scrcpy-engine" }
+tokio = { version = "1", features = ["time", "rt"] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-updater = "2"
 tauri-plugin-single-instance = "2"
@@ -53,4 +55,4 @@ windows-sys = { version = "0.59", features = [
 [profile.release]
 opt-level = 2
 lto = "thin"
-strip = false
+strip = true

@@ -20,6 +20,11 @@ const APP_CACHE_TTL: Duration = Duration::from_secs(600);
 
 static APP_CACHE: Mutex<Option<(Instant, Vec<App>)>> = Mutex::new(None);
 static REFRESHING: AtomicBool = AtomicBool::new(false);
+static LAST_PHONE_IP: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn get_last_phone_ip() -> Option<String> {
+    LAST_PHONE_IP.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
 
 // ───────────────────────── app list cache ─────────────────────────
 
@@ -241,6 +246,12 @@ pub fn handle(
     if !path.starts_with("/api/companion/") {
         return false;
     }
+    if let Ok(peer) = stream.peer_addr() {
+        let ip = peer.ip().to_string();
+        if ip != "127.0.0.1" && !ip.starts_with("::1") {
+            *LAST_PHONE_IP.lock().unwrap_or_else(|e| e.into_inner()) = Some(ip);
+        }
+    }
     let route = path.split('?').next().unwrap_or(path);
 
     match (method, route) {
@@ -254,7 +265,6 @@ pub fn handle(
         ("GET", "/api/companion/audio/devices") => audio_devices(request, stream, state),
         ("POST", "/api/companion/audio/switch") => audio_switch(request, stream, state),
         ("GET", "/api/companion/audio/sessions") => audio_sessions(request, stream, state),
-        ("POST", "/api/companion/audio/stream") => audio_stream_ctl(request, stream, state),
         _ => err(stream, 404, "Not Found", "Unknown companion endpoint"),
     }
     true
@@ -438,28 +448,4 @@ fn audio_sessions(request: &str, stream: &mut TcpStream, state: &Arc<Mutex<AuraS
     let v: Vec<_> = crate::audio_native::sessions().into_iter()
         .map(|(n, vol, m)| serde_json::json!({ "app": n, "volume": vol, "muted": m })).collect();
     respond(stream, 200, "OK", serde_json::json!({ "status": "ok", "sessions": v }));
-}
-
-/// POST {"action":"start","port":41782} | {"action":"stop"}. Audio goes to the caller's IP.
-fn audio_stream_ctl(request: &str, stream: &mut TcpStream, state: &Arc<Mutex<AuraSettings>>) {
-    if !authed(request, state) { return err(stream, 401, "Unauthorized", "Unauthorized"); }
-    #[derive(serde::Deserialize)]
-    struct Req { action: String, port: Option<u16> }
-    let r: Req = match serde_json::from_str(body_of(request)) {
-        Ok(r) => r,
-        Err(_) => return err(stream, 400, "Bad Request", "Malformed payload"),
-    };
-    if r.action == "stop" {
-        crate::audio_stream::stop();
-        return respond(stream, 200, "OK", serde_json::json!({ "status": "ok" }));
-    }
-    let peer = match stream.peer_addr() {
-        Ok(p) => p.ip(),
-        Err(_) => return err(stream, 500, "Error", "No peer"),
-    };
-    let dst = std::net::SocketAddr::new(peer, r.port.unwrap_or(41782));
-    match crate::audio_stream::start(dst) {
-        Ok(rate) => respond(stream, 200, "OK", serde_json::json!({ "status": "ok", "rate": rate, "channels": 2 })),
-        Err(e) => err(stream, 500, "Error", &e),
-    }
 }

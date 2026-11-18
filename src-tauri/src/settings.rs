@@ -40,13 +40,15 @@ impl Default for ModuleState {
     }
 }
 
-pub const MODULE_KEYS: [&str; 3] = ["voice", "search", "companion"];
+pub const MODULE_KEYS: [&str; 4] = ["voice", "search", "companion", "scrcpy"];
 
 fn default_modules() -> HashMap<String, ModuleState> {
-    MODULE_KEYS
-        .iter()
-        .map(|k| (k.to_string(), ModuleState::default()))
-        .collect()
+    let mut map = HashMap::new();
+    map.insert("voice".to_string(), ModuleState { enabled: true });
+    map.insert("search".to_string(), ModuleState { enabled: true });
+    map.insert("companion".to_string(), ModuleState { enabled: true });
+    map.insert("scrcpy".to_string(), ModuleState { enabled: false });
+    map
 }
 
 fn default_cs_hotkey() -> String {
@@ -171,7 +173,7 @@ impl AuraSettings {
     pub fn normalize(&mut self) {
         self.modules.retain(|k, _| MODULE_KEYS.contains(&k.as_str()));
         for k in MODULE_KEYS {
-            self.modules.entry(k.to_string()).or_default();
+            self.modules.entry(k.to_string()).or_insert_with(|| ModuleState { enabled: k != "scrcpy" });
         }
         if self.circle_search.hotkey.trim().is_empty() {
             self.circle_search.hotkey = default_cs_hotkey();
@@ -303,7 +305,8 @@ mod tests {
 
         for k in MODULE_KEYS {
             assert!(!s.module_should_run_now_with(k, true, false));
-            assert!(s.module_should_run_now_with(k, false, false));
+            let expected = k != "scrcpy";
+            assert_eq!(s.module_should_run_now_with(k, false, false), expected);
         }
 
         s.launch_at_login = true;

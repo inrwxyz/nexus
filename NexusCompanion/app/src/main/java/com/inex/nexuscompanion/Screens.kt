@@ -277,6 +277,8 @@ fun PairScreen(store: Store, net: Net, onDone: () -> Unit) {
                 val udp = uri?.getQueryParameter("udp")?.toIntOrNull() ?: 41781
                 if (uri?.scheme == "nexus" && uri.host == "pair" && !ip.isNullOrBlank() && !key.isNullOrBlank()) {
                     doPair(ip, port, udp, key)
+                } else if ((b.rawValue ?: "").startsWith("WIFI:T:ADB")) {
+                    err = "This is a Wireless Debugging QR. Please scan from Phone Settings > Developer Options > Wireless Debugging > Pair device with QR code."
                 } else {
                     err = "This is not a Nexus pairing QR."
                 }
@@ -415,36 +417,6 @@ private fun AudioSwitcher(net: Net) {
 }
 
 @Composable
-private fun PrivateListen(net: Net) {
-    val cs = MaterialTheme.colorScheme
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var on by remember { mutableStateOf(net.audioPlayer.isPlaying) }
-
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text("Listen on phone", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
-            Text("PC audio to your phone earphones", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-        }
-        Switch(checked = on, onCheckedChange = { want ->
-            scope.launch {
-                if (want) {
-                    val rate = net.audioStream(true)
-                    if (rate != null) {
-                        net.audioPlayer.start(ctx, 41782, rate)
-                        on = true
-                    }
-                } else {
-                    net.audioPlayer.stop()
-                    net.audioStream(false)
-                    on = false
-                }
-            }
-        })
-    }
-}
-
-@Composable
 fun CommandScreen(net: Net, onReach: (Boolean) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
@@ -560,15 +532,6 @@ fun ControlScreen(net: Net, store: Store, offline: Boolean, onOfflineChange: (Bo
         ) {
             Text("Audio Output", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = cs.onSurface)
             AudioSwitcher(net)
-        }
-
-        // Wireless Audio Stream (Listen on Phone)
-        Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainerLow).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text("Wireless Audio", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = cs.onSurface)
-            PrivateListen(net)
         }
 
         // Wake-on-LAN and Power Control

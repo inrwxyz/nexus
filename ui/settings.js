@@ -48,6 +48,7 @@ const MODULES = {
   search:   { name: 'Circle to Search', tabs: [['overview', 'Overview'], ['config', 'Configuration'], ['system', 'System']],
               info: SOON('Circle to Search', 'Draw around anything on your screen and search it instantly.',
                 [['Screen selection', 'Circle or drag over any part of the screen'], ['Offline OCR', 'Extract text directly using Windows OCR'], ['Google Lens', 'Visual search any region in one click']]) },
+  scrcpy:   { name: 'Scrcpy', tabs: [['connect', 'Connect'], ['config', 'Configuration'], ['system', 'System']] },
   companion: { name: 'Phone Link', tabs: [['pairing', 'Pairing'], ['features', 'Features'], ['system', 'System']] },
   settings: { name: 'Settings', tabs: [['general', 'General'], ['theme', 'Theme'], ['about', 'About'], ['reset', 'Reset']] },
 };
@@ -97,14 +98,15 @@ function buildPlaceholderPages() {
 }
 
 // ── Per-module on/off (lives in each module's System tab) ──
-const MOD_KEYS = ['voice', 'search', 'companion'];
+const MOD_KEYS = ['voice', 'search', 'companion', 'scrcpy'];
 const MOD_BLURB = {
   voice: 'Wake word, voice commands and the corner pill',
   search: 'Circle anything on screen and search it',
   companion: 'Hands-free voice relay and 120Hz trackpad',
+  scrcpy: 'Phone screen mirroring with low latency',
 };
 const modState = {};
-const resetModState = () => MOD_KEYS.forEach(k => { modState[k] = { enabled: true }; });
+const resetModState = () => MOD_KEYS.forEach(k => { modState[k] = { enabled: k !== 'scrcpy' }; });
 resetModState();
 
 const ICO_POWER = '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>';
@@ -122,6 +124,13 @@ function setModule(key, patch) {
   if (!modState[key]) return;
   Object.assign(modState[key], patch);
   applyModules();
+  if (key === 'scrcpy') {
+    if (!patch.enabled) {
+      if (typeof window.stopScrcpy === 'function') window.stopScrcpy();
+    } else {
+      if (typeof window.onScrcpyTab === 'function') window.onScrcpyTab(curTab);
+    }
+  }
   const name = MODULES[key].name;
   saveSettings(`${name} ${patch.enabled ? 'on' : 'off'}`);
 }
@@ -141,6 +150,7 @@ let curModule = 'voice', curTab = 'home';
 function showModule(key, tab) {
   const m = MODULES[key]; if (!m) return;
   curModule = key;
+  $('#modname').textContent = m.name;
   $$('.mod').forEach(b => b.classList.toggle('active', b.dataset.module === key));
   subnav.textContent = '';
   m.tabs.forEach(([id, label]) => {
@@ -151,6 +161,7 @@ function showModule(key, tab) {
   });
   showTab(tab || m.tabs[0][0]);
   applyModules();
+  if (key === 'scrcpy' && modState.scrcpy.enabled && window.onScrcpyTab) window.onScrcpyTab(tab || m.tabs[0][0]);
 }
 function showTab(id) {
   const to = $(`#page-${curModule}-${id}`); if (!to) return;
@@ -160,6 +171,7 @@ function showTab(id) {
   to.classList.add('active');
   $('#page').scrollTop = 0;
   closeAllDropdowns();
+  if (curModule === 'scrcpy' && modState.scrcpy.enabled && window.onScrcpyTab) window.onScrcpyTab(id);
 }
 $$('.mod').forEach(b => b.addEventListener('click', () => showModule(b.dataset.module)));
 
@@ -167,8 +179,7 @@ let csRecordingHotkey = false;
 document.addEventListener('keydown', e => {
   if (csRecordingHotkey) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const tabs = MODULES[curModule].tabs, i = '123456789'.indexOf(e.key);
-  if (i > -1 && tabs[i]) return showTab(tabs[i][0]);
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
   if (curModule === 'voice' && curTab === 'home' && !document.activeElement.closest('.dd')) {
     if (e.key === 'ArrowLeft')  cycleWake(-1);
     if (e.key === 'ArrowRight') cycleWake(1);

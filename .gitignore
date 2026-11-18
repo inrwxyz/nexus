@@ -50,3 +50,7 @@ $RECYCLE.BIN/
 *.swp
 *.swo
 .DS_Store
+
+# Local phone pairing data (private IP / device model)
+wireless_device.json
+*wireless_device.json

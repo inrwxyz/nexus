@@ -18,10 +18,13 @@ pub fn search_files_and_folders(query: &str, folder_only: bool) -> Vec<FoundItem
         return Vec::new();
     }
 
-    let mut search_roots: Vec<std::path::PathBuf> = vec![
-        std::path::PathBuf::from(r"E:\"),
-        std::path::PathBuf::from(r"D:\"),
-    ];
+    let mut search_roots: Vec<std::path::PathBuf> = Vec::new();
+    for drive in ['D', 'E', 'F', 'G'] {
+        let p = std::path::PathBuf::from(format!(r"{drive}:\"));
+        if p.is_dir() {
+            search_roots.push(p);
+        }
+    }
     if let Ok(profile) = std::env::var("USERPROFILE") {
         let home = std::path::PathBuf::from(profile);
         search_roots.push(home.join("Desktop"));

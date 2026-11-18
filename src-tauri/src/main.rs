@@ -3,7 +3,6 @@
 pub mod app_launcher;
 pub mod audio_native;
 pub mod audio_switch;
-pub mod audio_stream;
 pub mod native_cmds;
 pub mod companion;
 pub mod engine;
@@ -320,7 +319,21 @@ fn main() {
             modules::circle_search::recognize_desktop_music,
             modules::circle_search::copy_circle_text,
             modules::circle_search::search_circle_text,
-            modules::circle_search::get_circle_search_status
+            modules::circle_search::get_circle_search_status,
+            modules::scrcpy::sc_devices,
+            modules::scrcpy::sc_connect,
+            modules::scrcpy::sc_remove_device,
+            modules::scrcpy::sc_make_permanent,
+            modules::scrcpy::sc_saved,
+            modules::scrcpy::sc_load_prefs,
+            modules::scrcpy::sc_save_prefs,
+            modules::scrcpy::sc_start,
+            modules::scrcpy::sc_stop,
+            modules::scrcpy::sc_active,
+            modules::scrcpy::sc_qr_start,
+            modules::scrcpy::sc_qr_status,
+            modules::scrcpy::sc_qr_cancel,
+            modules::scrcpy::sc_kill_adb
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -383,7 +396,10 @@ fn main() {
                     "toggle_mute" => {
                         let _ = toggle_mic_mute(app.clone());
                     }
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        modules::scrcpy::sc_stop();
+                        app.exit(0);
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {

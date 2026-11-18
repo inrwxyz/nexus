@@ -30,21 +30,26 @@ Nexus is a fast, low-resource desktop companion for Windows that provides ambien
   - Desktop audio music recognition (WASAPI loopback + Shazam signature).
 - **Inex Island Integration**:
   - Named pipe IPC (`\\.\pipe\inex_island_ipc`) for displaying voice status and animated states on Inex Island.
+- **Screen Mirroring (Scrcpy)**:
+  - Phone screen mirroring over USB, wireless ADB, or QR pairing.
+  - Low-latency display with customizable resolution, bitrate, framerate, and audio codec.
+  - One-click permanent wireless connection.
 
 ## Project Structure
 
 ```
 nexus/
+├── scrcpy-engine/           # Native Rust ADB client and wireless manager
 ├── src-tauri/               # Rust backend & Tauri v2 core
 │   ├── src/
 │   │   ├── main.rs          # Application lifecycle, tray icon, Tauri commands
-│   │   ├── audio_stream.rs  # WASAPI loopback audio capture and UDP streamer
 │   │   ├── companion.rs     # Phone pairing and command handler
 │   │   ├── executor.rs      # Voice command parsing and execution
 │   │   ├── trackpad.rs      # UDP trackpad listener (port 41781)
 │   │   ├── server.rs        # HTTP companion server (port 41780)
 │   │   └── modules/
 │   │       ├── circle_search.rs # Overlay window and search logic
+│   │       ├── scrcpy.rs    # Scrcpy process management and ADB bridge
 │   │       └── cs/          # Capture, OCR, Shazam, translation submodules
 │   ├── Cargo.toml
 │   └── tauri.conf.json
@@ -52,6 +57,7 @@ nexus/
 │   └── app/                 # Trackpad, AudioStream, and pairing screens
 ├── ui/                      # Desktop UI
 │   ├── settings.html        # Desktop settings window
+│   ├── scrcpy.js            # Scrcpy controls and settings
 │   └── circle-search-overlay.html # Circle-to-Search screen overlay
 └── README.md
 ```
