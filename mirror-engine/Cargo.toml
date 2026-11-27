@@ -1,0 +1,15 @@
+[package]
+name = "nexus-mirror-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Native Rust Screen Mirror engine (ADB, permanent wireless, video/audio stream)"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+byteorder = "1.5"
+bytes = "1.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+log = "0.4"
+rand = "0.8"

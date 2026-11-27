@@ -466,7 +466,7 @@ mod tests {
         };
         let (x, y) = compute_pill_origin(work, 1920, 1080, 64, 64, 1.0);
         // Right side near monitor right edge
-        assert!(x >= 1840 && x <= 1900, "unexpected x={x}");
+        assert!((1840..=1900).contains(&x), "unexpected x={x}");
         // Lower-right ~80% down, clearly above taskbar
         assert!(y >= 800 && y + 64 < 1032, "unexpected y={y}");
     }

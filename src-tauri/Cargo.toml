@@ -1,6 +1,6 @@
 [package]
 name = "nexus"
-version = "1.0.4"
+version = "2.0.1"
 description = "Nexus - Ambient Voice Automation"
 authors = ["inrwxyz"]
 edition = "2021"
@@ -10,6 +10,8 @@ default-run = "nexus"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+nexus-mirror-engine = { path = "../mirror-engine" }
+tokio = { version = "1", features = ["time", "rt", "net", "io-util", "sync"] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-updater = "2"
 tauri-plugin-single-instance = "2"
@@ -25,7 +27,7 @@ base64 = "0.22"
 crc32fast = "1"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 windows-core = "0.59"
-windows = { version = "0.59", features = ["Win32_Devices_FunctionDiscovery", "Win32_NetworkManagement_IpHelper", "Media_Control", "Media_Ocr", "Graphics_Imaging", "Security_Cryptography", "Storage_Streams", "Globalization", "Foundation", "Foundation_Collections", "Win32_Foundation", "Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell_PropertiesSystem"] }
+windows = { version = "0.59", features = ["ApplicationModel_DataTransfer", "Win32_Devices_FunctionDiscovery", "Win32_NetworkManagement_IpHelper", "Media_Control", "Media_Core", "Media_Ocr", "Media_SpeechSynthesis", "Graphics_Imaging", "Security_Cryptography", "Storage_Streams", "Globalization", "Foundation", "Foundation_Collections", "Win32_Foundation", "Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_Media_MediaFoundation", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell_PropertiesSystem"] }
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_System_Threading",
@@ -48,9 +50,23 @@ windows-sys = { version = "0.59", features = [
     "Win32_Security",
     "Win32_System_IO",
     "Win32_System_Power",
+    "Win32_Devices_Display",
+    "Win32_System_SystemInformation",
+    "Win32_System_LibraryLoader",
+    "Win32_Graphics_Dwm",
 ] }
+
+[target.'cfg(windows)'.dependencies.wmi]
+version = "0.14"
+
+[target.'cfg(windows)'.dependencies.webview2-com]
+version = "0.39"
+
+[target.'cfg(windows)'.dependencies.windows_core_062]
+package = "windows-core"
+version = "0.62"
 
 [profile.release]
 opt-level = 2
 lto = "thin"
-strip = false
+strip = true

@@ -18,10 +18,13 @@ pub fn search_files_and_folders(query: &str, folder_only: bool) -> Vec<FoundItem
         return Vec::new();
     }
 
-    let mut search_roots: Vec<std::path::PathBuf> = vec![
-        std::path::PathBuf::from(r"E:\"),
-        std::path::PathBuf::from(r"D:\"),
-    ];
+    let mut search_roots: Vec<std::path::PathBuf> = Vec::new();
+    for drive in ['D', 'E', 'F', 'G'] {
+        let p = std::path::PathBuf::from(format!(r"{drive}:\"));
+        if p.is_dir() {
+            search_roots.push(p);
+        }
+    }
     if let Ok(profile) = std::env::var("USERPROFILE") {
         let home = std::path::PathBuf::from(profile);
         search_roots.push(home.join("Desktop"));
@@ -142,16 +145,15 @@ fn scan_dir(
                 name_norm.contains(query) || score(query, &name_norm) >= 0.75
             };
 
-            if matched {
-                if !folder_only || is_dir {
-                    if !results.iter().any(|r| r.path == path) {
-                        results.push(FoundItem {
-                            path: path.clone(),
+            if matched
+                && (!folder_only || is_dir)
+                && !results.iter().any(|r| r.path == path)
+            {
+                results.push(FoundItem {
+                    path: path.clone(),
 
-                            is_dir,
-                        });
-                    }
-                }
+                    is_dir,
+                });
             }
 
             if is_dir && depth + 1 < max_depth {
@@ -395,10 +397,8 @@ pub fn handle_file_explorer(cmd: &str, voice_inst: Option<&voice::Voice>) -> boo
                 if count >= 4 {
                     choice_idx = Some(3);
                 }
-            } else if h.contains("five") || h.contains("5") {
-                if count >= 5 {
-                    choice_idx = Some(4);
-                }
+            } else if (h.contains("five") || h.contains("5")) && count >= 5 {
+                choice_idx = Some(4);
             }
         }
     }

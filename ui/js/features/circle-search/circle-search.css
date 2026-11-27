@@ -1,0 +1,12 @@
+/* Circle to Search feature styles */
+.launch-big { width: 100%; display: flex; align-items: center; gap: 22px; padding: 34px 32px; border: 1px solid var(--accent-line); border-radius: 24px; background: var(--accent-soft); cursor: pointer; transition: background .15s, border-color .15s, transform .15s; }
+.launch-big:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: var(--accent); transform: translateY(-1px); }
+.launch-ico { width: 64px; height: 64px; flex-shrink: 0; border-radius: 20px; display: grid; place-items: center; color: var(--accent); background: var(--card); border: 1px solid var(--accent-line); }
+.launch-ico svg { width: 30px; height: 30px; }
+.launch-text { flex: 1; min-width: 0; }
+.launch-title { font-family: var(--serif); font-size: 30px; line-height: 1.1; color: var(--text); }
+.launch-sub { margin-top: 8px; font-size: 13px; line-height: 1.5; color: var(--dim); }
+.launch-arrow { color: var(--accent); transition: transform .15s; }
+.launch-big:hover .launch-arrow { transform: translateX(3px); }
+.launch-arrow svg { width: 22px; height: 22px; }
+.launch-foot { margin-top: 14px; }

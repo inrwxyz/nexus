@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="dark light" />
   <title>Nexus</title>
-  <link rel="stylesheet" href="settings.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 <div class="win" id="win">
@@ -13,7 +13,7 @@
   <!-- ─ Left sidebar: main modules ─────────────────────── -->
   <div class="left">
     <div class="brand" data-tauri-drag-region>
-      <svg class="brand-logo" viewBox="0 0 64 64" width="26" height="26" aria-hidden="true"><rect x="2" y="2" width="60" height="60" rx="18" class="lg-bg"/><path d="M21 47V17l22 30V17" class="lg-n"/></svg>
+      <img class="brand-logo" src="./assets/nexus-logo.png" width="24" height="24" alt="Nexus" data-tauri-drag-region />
       <span class="brand-name">Nexus</span>
     </div>
     <aside id="sidebar" class="sidebar">
@@ -21,6 +21,7 @@
       <button class="mod active" data-module="voice"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg><span>Voice</span></button>
       <button class="mod" data-module="search"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/><path d="M3 3h3M3 3v3M21 3h-3M21 3v3"/></svg><span>Circle to Search</span></button>
       <button class="mod" data-module="companion"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg><span>Phone Link</span></button>
+      <button class="mod" data-module="scrcpy"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>Screen Mirror</span></button>
     </nav>
     <div class="side-bottom">
       <button class="mod" data-module="settings"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Settings</span></button>
@@ -32,7 +33,6 @@
   <div class="content">
     <header id="titlebar" data-tauri-drag-region>
       <div class="hdr-spacer" data-tauri-drag-region></div>
-      <nav id="subnav" class="tabs" aria-label="Sub sections"></nav>
       <div class="win-controls">
         <button id="btn-min" class="wc" title="Minimize" aria-label="Minimize"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
         <button id="btn-max" class="wc" title="Maximize" aria-label="Maximize"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>
@@ -40,7 +40,7 @@
       </div>
     </header>
 
-    <main id="stage" class="stage"><div id="page">
+    <main id="stage" class="stage"><div class="subcol"><div id="modname" class="modname"></div><nav id="subnav" class="tabs" aria-label="Sub sections"></nav></div><div id="page">
 
       <!-- ═ VOICE · Home ═ -->
       <section id="page-voice-home" class="page-section home">
@@ -115,7 +115,139 @@
           <div class="sheet-label">Media &amp; sound</div>
           <div class="row"><div class="row-text"><div class="row-label">Play / pause / next / previous</div><div class="row-sub">“play music” · “pause” · “next song” · “previous song”</div></div></div>
           <div class="row"><div class="row-text"><div class="row-label">Volume &amp; mute</div><div class="row-sub">“volume up” · “volume down” · “mute”</div></div></div>
+          <div class="sheet-label">Dictation &amp; AI</div>
+          <div class="row"><div class="row-text"><div class="row-label">Type at cursor</div><div class="row-sub">“type hello” · “smart type email text” · “স্ক্রিনে কী আছে?”</div></div></div>
         </div></div>
+      </section>
+
+      <!-- ═ VOICE · AI & Keys ═ -->
+      <section id="page-voice-ai" class="page-section split">
+        <aside class="side">
+          <div class="kicker">04</div>
+          <h1>AI &amp;<br><em>API Keys</em></h1>
+          <p>Fast local commands stay instant. Pick a sub-section below to configure voice AI, encrypted keys, Ollama, or safety controls.</p>
+          <div class="ai-subnav" id="ai-subnav" role="tablist" aria-label="AI & Keys subsections">
+            <button type="button" class="ai-subtab on" data-ai-tab="assistant">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+              <span>Assistant &amp; Voice</span>
+            </button>
+            <button type="button" class="ai-subtab" data-ai-tab="keys">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6M15.5 7.5 18 10"/></svg>
+              <span>API Keys Vault</span>
+            </button>
+            <button type="button" class="ai-subtab" data-ai-tab="local">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+              <span>Local LLM</span>
+            </button>
+            <button type="button" class="ai-subtab" data-ai-tab="safety">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              <span>Terminal &amp; Safety</span>
+            </button>
+            <button type="button" class="ai-subtab" data-ai-tab="chat">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span>Quick Chat &amp; Test</span>
+            </button>
+          </div>
+        </aside>
+        <div class="main">
+          <div class="sheet ai-subcard on" data-ai-panel="assistant">
+            <div class="sheet-label">Voice AI Behavior</div>
+            <div class="row ai-master-row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></div>
+                <div class="row-text"><div class="row-label">Enable Voice AI Assistant</div><div class="row-sub">Activates only as smart fallback after fast local commands &amp; STT</div></div></div>
+              <div class="row-ctrl"><label class="switch"><input type="checkbox" id="toggle-ai-enabled" /><span class="slider"></span></label></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></div>
+                <div class="row-text"><div class="row-label">Routing Priority</div><div class="row-sub">Choose Cloud API Keys vs Local LLM priority</div></div></div>
+              <div class="row-ctrl"><div class="seg" id="seg-ai-route"><button type="button" class="sg on" data-v="hybrid">Hybrid</button><button type="button" class="sg" data-v="api_only">API</button><button type="button" class="sg" data-v="local_first">Local 1st</button><button type="button" class="sg" data-v="local_only">Local</button></div></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg></div>
+                <div class="row-text"><div class="row-label">Voice Talkback &amp; Character</div><div class="row-sub">Natural Google/Siri-grade voice or Windows OneCore male voice</div></div></div>
+              <div class="row-ctrl row-ctrl-inline">
+                <select id="ai-voice-style" class="in" style="width:168px">
+                  <option value="google_natural">Natural (Google/Siri)</option>
+                  <option value="male_george">George (Male · Jarvis)</option>
+                  <option value="male_ravi">Ravi (Male · India)</option>
+                </select>
+                <label class="switch"><input type="checkbox" id="toggle-ai-voice-reply" checked /><span class="slider"></span></label>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></div>
+                <div class="row-text"><div class="row-label">Voice Typing at Cursor</div><div class="row-sub">Say “type …” for instant raw dictation or “smart type …” to polish with AI</div></div></div>
+              <div class="row-ctrl"><label class="switch"><input type="checkbox" id="toggle-ai-dictation" checked /><span class="slider"></span></label></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M8 21h8M12 17v4"/></svg></div>
+                <div class="row-text"><div class="row-label">Screen OCR Awareness</div><div class="row-sub">Read active window, taskbar apps &amp; OCR text offline when you ask about your screen</div></div></div>
+              <div class="row-ctrl"><label class="switch"><input type="checkbox" id="toggle-ai-screen" checked /><span class="slider"></span></label></div>
+            </div>
+          </div>
+
+          <div class="sheet ai-subcard" data-ai-panel="keys">
+            <div class="sheet-label">Multi-API Key Vault (DPAPI Encrypted · Auto-Rotates on 429)</div>
+            <div class="ai-form-grid">
+              <input type="text" id="ai-key-label" class="in in-full" placeholder="Key name (e.g. OpenRouter)" />
+              <select id="ai-key-provider" class="in in-full">
+                <option value="gemini">Gemini</option>
+                <option value="groq">Groq</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="openai">OpenAI</option>
+                <option value="claude">Claude</option>
+              </select>
+              <input type="text" id="ai-key-model" class="in in-full" placeholder="Model ID" />
+            </div>
+            <div class="ai-form-row2">
+              <input type="password" id="ai-key-secret" class="in in-full" placeholder="Paste API key (encrypted & hidden immediately)" autocomplete="off" />
+              <button type="button" class="btn" id="btn-ai-add-key">Add Key</button>
+            </div>
+            <div id="ai-key-list" class="ai-key-list"></div>
+          </div>
+
+          <div class="sheet ai-subcard" data-ai-panel="local">
+            <div class="sheet-label">Local LLM (On-Demand Download Only · Separate Switch)</div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/></svg></div>
+                <div class="row-text"><div class="row-label">Use Local LLM</div><div class="row-sub" id="ai-local-status">Checking Ollama...</div><div class="row-sub" id="ai-local-models-chip"></div></div></div>
+              <div class="row-ctrl"><label class="switch"><input type="checkbox" id="toggle-ai-local" /><span class="slider"></span></label></div>
+            </div>
+            <div class="ai-form-row2">
+              <input type="text" id="ai-local-model" class="in in-full" list="ai-local-presets" value="llama3.2:3b" placeholder="Model (llama3.2:3b, qwen2.5:3b, phi3:mini)" />
+              <datalist id="ai-local-presets">
+                <option value="llama3.2:3b"></option>
+                <option value="qwen2.5:3b"></option>
+                <option value="gemma2:2b"></option>
+                <option value="phi3:mini"></option>
+              </datalist>
+              <button type="button" class="btn" id="btn-ai-install-local">Setup Ollama</button>
+              <button type="button" class="btn" id="btn-ai-pull-model">Download Model</button>
+            </div>
+            <div class="ai-progress" id="ai-local-progress"></div>
+          </div>
+
+          <div class="sheet ai-subcard" data-ai-panel="safety">
+            <div class="sheet-label">Safety &amp; Opt-In AI Terminal</div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+                <div class="row-text"><div class="row-label">Allow AI Terminal &amp; Task Diagnostics</div><div class="row-sub">Disabled by default · Read-only system checks run safely · Destructive commands blocked</div></div></div>
+              <div class="row-ctrl"><label class="switch"><input type="checkbox" id="toggle-ai-terminal" /><span class="slider"></span></label></div>
+            </div>
+            <div id="ai-proposal-list" class="ai-prop-list"></div>
+          </div>
+
+          <div class="sheet ai-subcard" data-ai-panel="chat">
+            <div class="sheet-label">Quick Chat &amp; Screen Check</div>
+            <div class="ai-chat-bar">
+              <input type="text" id="ai-chat-input" class="in in-full" placeholder="Ask something, crack a joke, or say 'what is on my screen?'" />
+              <button type="button" class="btn" id="btn-ai-ask">Ask AI</button>
+              <button type="button" class="btn" id="btn-ai-clear-chat">Clear</button>
+            </div>
+            <div class="ai-chat-out" id="ai-chat-out">Ask Nexus AI anything, check screen errors, or chat naturally.</div>
+            <div class="ai-chat-meta" id="ai-chat-meta"></div>
+          </div>
+        </div>
       </section>
 
       <!-- ═ COMPANION · Pairing ═ -->
@@ -123,12 +255,26 @@
         <aside class="side"><div class="kicker">01</div><h1>Phone Link<br><em>&amp; Pairing</em></h1><p>Connect your Android phone to Nexus for hands-free "Hey Google" voice relay and an ultra-smooth 120Hz trackpad.</p></aside>
         <div class="main">
           <div class="sheet">
-            <div id="row-comp-unpaired" style="display:flex;flex-direction:column;align-items:center;gap:18px;padding:36px 0;">
-              <div id="comp-qr" style="width:200px;height:200px;border-radius:16px;overflow:hidden;background:#fff;"></div>
-              <div class="row-label" style="text-align:center;">Scan with Nexus Companion to Connect</div>
+            <div id="row-comp-unpaired" class="comp-qr-wrap">
+              <div id="comp-qr-idle" class="comp-qr-idle">
+                <div class="comp-qr-placeholder" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="38" height="38" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M14 21h7v-4"/></svg>
+                </div>
+                <div class="row-label comp-qr-label">Pair Your Phone</div>
+                <div class="row-sub comp-qr-sub">Click Generate QR when you are ready to scan with Nexus Companion.</div>
+                <button id="btn-comp-gen-qr" class="btn btn-primary" type="button">Generate QR</button>
+              </div>
+              <div id="comp-qr-active" class="comp-qr-active" hidden>
+                <div id="comp-qr" class="comp-qr-box"></div>
+                <div class="row-label comp-qr-label">Scan with Nexus Companion to Connect</div>
+                <div class="comp-qr-actions">
+                  <button id="btn-comp-regen-qr" class="btn" type="button">Regenerate</button>
+                  <button id="btn-comp-hide-qr" class="btn" type="button">Cancel</button>
+                </div>
+              </div>
             </div>
 
-            <div class="row" id="row-comp-paired" style="display:none;">
+            <div class="row" id="row-comp-paired" hidden>
               <div class="row-left">
                 <div class="ico on"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
                 <div class="row-text">
@@ -202,8 +348,126 @@
                 </div>
               </div>
               <div class="row-ctrl">
-                <input type="range" id="comp-sens-slider" min="0.5" max="2.5" step="0.1" value="1.2" style="width:110px;accent-color:var(--brand, #3b82f6);" />
+                <input type="range" class="comp-sens-range" id="comp-sens-slider" min="0.5" max="2.5" step="0.1" value="1.2" />
               </div>
+            </div>
+
+            <div class="row">
+              <div class="row-left">
+                <div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+                <div class="row-text">
+                  <div class="row-label">Remote Terminal Access</div>
+                  <div class="row-sub">Restricted · Full PowerShell control from paired phone (requires policy consent)</div>
+                </div>
+              </div>
+              <div class="row-ctrl"><label class="switch"><input type="checkbox" id="toggle-comp-terminal" /><span class="slider"></span></label></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═ COMPANION · Gamepad (with inner sub-sections matching Voice · AI & Keys) ═ -->
+      <section id="page-companion-gamepad" class="page-section split">
+        <aside class="side">
+          <div class="kicker">03</div>
+          <h1>Game<br><em>Controller</em></h1>
+          <p>Play racing, shooter, and console PC games from your paired phone with zero-latency UDP input.</p>
+          <div class="gp-subnav" id="gp-subnav" role="tablist" aria-label="Gamepad subsections">
+            <button type="button" class="gp-subtab on" data-gp-tab="overview">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="4"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/></svg>
+              <span>Overview</span>
+            </button>
+            <button type="button" class="gp-subtab" data-gp-tab="profiles">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+              <span>Profile HUD</span>
+            </button>
+            <button type="button" class="gp-subtab" data-gp-tab="tuning">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
+              <span>Tuning</span>
+            </button>
+          </div>
+        </aside>
+        <div class="main">
+          <div class="sheet gp-subcard on" data-gp-panel="overview">
+            <div class="sheet-label">Phone Game Controller</div>
+            <div class="row gp-master-row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg></div>
+                <div class="row-text"><div class="row-label">Enable Game Controller</div><div class="row-sub">Runs inside Phone Link · Automatically suspended when off or unpaired</div></div>
+              </div>
+              <div class="row-ctrl"><label class="switch"><input type="checkbox" id="toggle-gp-enabled" checked /><span class="slider"></span></label></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="4"/></svg></div>
+                <div class="row-text"><div class="row-label" id="gp-conn-title">Ready for Phone Controller</div><div class="row-sub" id="gp-conn-sub">Open Nexus Companion on your phone → tap Gamepad</div></div>
+              </div>
+              <div class="row-ctrl"><button class="btn" id="btn-gp-release" type="button">Release Keys</button></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+                <div class="row-text"><div class="row-label">Input Engine</div><div class="row-sub" id="gp-driver-sub">Hardware ScanCode + Raw Mouse ready (works with zero extra drivers)</div></div>
+              </div>
+            </div>
+            <div class="row row-action" id="gp-overview-profile-row">
+              <div class="row-left"><div class="ico on"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+                <div class="row-text"><div class="row-label">Active Profile HUD</div><div class="row-sub" id="gp-overview-active">Action / Shooter · Auto-synced with phone</div></div>
+              </div>
+              <div class="row-arrow"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+            </div>
+          </div>
+
+          <div class="sheet gp-subcard" data-gp-panel="profiles">
+            <div class="gp-sheet-head">
+              <span class="gp-sheet-kicker">Controller Profiles</span>
+              <span class="gp-sheet-hint" id="gp-sync-hint">Click card to apply on phone</span>
+            </div>
+            <div class="gp-profiles-grid" id="gp-profiles-list">
+              <div class="gp-prof-sub">Loading profiles…</div>
+            </div>
+          </div>
+
+          <div class="sheet gp-subcard" data-gp-panel="tuning">
+            <div class="sheet-label">Layout &amp; Sensitivity</div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></div>
+                <div class="row-text"><div class="row-label">Default Phone Layout</div><div class="row-sub">Initial layout opened on your phone</div></div>
+              </div>
+              <div class="row-ctrl row-ctrl-inline"><div class="seg" data-gp-mode="1"><button type="button" class="sg on" data-v="action">Action HUD</button><button type="button" class="sg" data-v="racing">Racing Wheel</button></div></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg></div>
+                <div class="row-text"><div class="row-label">Camera Aim Sensitivity</div><div class="row-sub">Look speed: <span id="gp-aim-val">1.2x</span></div></div>
+              </div>
+              <div class="row-ctrl"><input type="range" class="gp-range" id="gp-aim-slider" min="0.4" max="3.0" step="0.1" value="1.2" /></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></div>
+                <div class="row-text"><div class="row-label">Gyro Steering Sensitivity</div><div class="row-sub">Tilt angle speed: <span id="gp-gyro-val">1.3x</span></div></div>
+              </div>
+              <div class="row-ctrl"><input type="range" class="gp-range" id="gp-gyro-slider" min="0.4" max="3.0" step="0.1" value="1.3" /></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/></svg></div>
+                <div class="row-text"><div class="row-label">Gyro Deadzone</div><div class="row-sub">Ignore small hand shake: <span id="gp-dz-val">8%</span></div></div>
+              </div>
+              <div class="row-ctrl"><input type="range" class="gp-range" id="gp-dz-slider" min="0.02" max="0.25" step="0.01" value="0.08" /></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+                <div class="row-text"><div class="row-label">Auto-Detect Running Game</div><div class="row-sub">Automatically switch phone HUD when a matching game window opens (Forza, GTA 5, FIFA, etc.)</div></div>
+              </div>
+              <div class="row-ctrl"><label class="switch"><input type="checkbox" id="toggle-gp-autodetect" checked /><span class="slider"></span></label></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+                <div class="row-text"><div class="row-label">Auto-Sprint at Stick Edge</div><div class="row-sub">Pushing WASD joystick all the way forward automatically holds Shift</div></div>
+              </div>
+              <div class="row-ctrl"><label class="switch"><input type="checkbox" id="toggle-gp-autosprint" checked /><span class="slider"></span></label></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8v8M6 5v14M18 5v14M22 8v8"/><rect x="10" y="3" width="4" height="18" rx="1"/></svg></div>
+                <div class="row-text"><div class="row-label">Phone Haptics</div><div class="row-sub">Tactile vibration feedback when pressing controller buttons</div></div>
+              </div>
+              <div class="row-ctrl"><label class="switch"><input type="checkbox" id="toggle-gp-haptics" checked /><span class="slider"></span></label></div>
             </div>
           </div>
         </div>
@@ -211,7 +475,7 @@
 
       <!-- ═ COMPANION · System ═ -->
       <section id="page-companion-system" class="page-section split">
-        <aside class="side"><div class="kicker">03</div><h1>Sys<em>tem</em></h1><p>Turn Phone Link on or off completely.</p></aside>
+        <aside class="side"><div class="kicker">04</div><h1>Sys<em>tem</em></h1><p>Turn Phone Link (and Game Controller) on or off completely.</p></aside>
         <div class="main"><div class="sheet" id="sys-companion"></div></div>
       </section>
 
@@ -242,12 +506,15 @@
         <div class="main">
           <div class="app-hero">
             <div class="app-logo"><svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><rect x="2" y="2" width="60" height="60" rx="18" class="lg-bg"/><path d="M21 47V17l22 30V17" class="lg-n"/></svg></div>
-            <div class="app-meta"><div class="app-name">Nexus</div><div><span class="badge"><i></i>v1.0.1 Stable</span></div></div>
+            <div class="app-meta"><div class="app-name">Nexus</div><div><span class="badge" id="about-ver-badge"><i></i>v2.0.1</span></div></div>
           </div>
-          <div class="status-banner"><span class="dot-online"></span><span>Nexus is up to date (v1.0.0)</span></div>
           <div class="sheet">
             <div class="row row-action" id="btn-check-update"><div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></div><div class="row-text"><div class="row-label">Check for Updates</div><div class="row-sub">Check GitHub releases for the latest version</div></div></div><div class="row-arrow"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div></div>
             <div class="row row-action" id="btn-dev-profile"><div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg></div><div class="row-text"><div class="row-label">Developer Profile</div><div class="row-sub">github.com/inrwxyz</div></div></div><div class="row-arrow"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg></div></div>
+          </div>
+          <div class="ab-note">
+            <p>Nexus started with one goal: make your Windows PC and Android phone work as one seamless companion by voice and touch. Built solo with love in Rust, Tauri, and Kotlin. If something breaks or you want a feature, open an issue on GitHub and I will read it.</p>
+            <div class="ab-sign">Inexorion <span class="ab-heart">&#9829;</span></div>
           </div>
         </div>
       </section>
@@ -260,11 +527,188 @@
         </div></div>
       </section>
 
+      <!-- ═ SCREEN MIRROR · Connect ═ -->
+      <section id="page-scrcpy-connect" class="page-section split">
+        <aside class="side"><div class="kicker">01</div><h1>Connect<br><em>your phone</em></h1><p>Mirror your phone screen with USB, a QR code, or an IP and port.</p></aside>
+        <div class="main"><div class="sheet">
+            <div class="row" id="sc-dev-row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></div><div class="row-text"><div class="row-label" id="sc-dev-name">Checking connected phone…</div><div class="row-sub" id="sc-dev-sub">Detecting USB and Wi-Fi ADB devices</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><button class="btn" id="sc-dev-remove" type="button" hidden>Remove</button><button class="btn" id="sc-dev-refresh" type="button">Refresh</button></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="6" rx="1"/><path d="M12 8v14M9 22h6"/></svg></div><div class="row-text"><div class="row-label">USB cable</div><div class="row-sub" id="sc-usb-sub">Plug in your phone, then press Start</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><button class="btn" id="sc-usb-go" type="button">Start</button></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M14 21h7v-4"/></svg></div><div class="row-text"><div class="row-label">QR code</div><div class="row-sub">Scan via phone: Settings &gt; Developer options &gt; Wireless debugging &gt; Pair with QR</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><button class="btn" id="sc-qr-go" type="button">Show QR</button></div>
+            </div>
+            <div class="row sc-qr" id="sc-qr-row" hidden>
+              <div class="sc-qrbox" id="sc-qr-box"></div>
+              <div class="sc-qrside"><div class="row-label" id="sc-qr-msg">Waiting…</div><div class="row-sub" style="font-size:11px;">Scan with phone's Wireless debugging</div><button class="btn" id="sc-qr-cancel" type="button">Cancel</button></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg></div><div class="row-text"><div class="row-label">IP and port</div><div class="row-sub" id="sc-ip-sub">Filled in automatically</div></div></div>
+              <div class="row-ctrl row-ctrl-inline" style="gap:6px;"><input type="text" class="in" id="sc-ip" placeholder="192.168.1.10" /><input type="text" class="in in-port" id="sc-port" placeholder="5555" /><button class="btn" id="sc-ip-go" type="button">Connect</button></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div><div class="row-text"><div class="row-label">Permanent connection</div><div class="row-sub" id="sc-perm-sub">One click while on USB, then stays connected</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><button class="btn" id="sc-perm-go" type="button">Make permanent</button></div>
+            </div>
+            <div class="sheet-label">Mirror control</div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div><div class="row-text"><div class="row-label" id="sc-mirror-title">Screen mirroring</div><div class="row-sub" id="sc-status">Not running</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><button class="btn" id="sc-stop" type="button">Start</button></div>
+            </div>
+          </div></div>
+      </section>
+
+      <!-- ═ SCREEN MIRROR · Config ═ -->
+      <section id="page-scrcpy-config" class="page-section split">
+        <aside class="side"><div class="kicker">02</div><h1>Stream<br><em>settings</em></h1><p>Tune resolution, frame rate, audio, and battery saving options.</p></aside>
+        <div class="main"><div class="sheet">
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div><div class="row-text"><div class="row-label">Resolution</div><div class="row-sub">720p is fastest, 1080p is sharp</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><div class="seg" data-pref="res"><button type="button" class="sg" data-v="720">720p</button><button type="button" class="sg on" data-v="1080">1080p</button><button type="button" class="sg" data-v="orig">Original</button></div></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><div class="row-text"><div class="row-label">Bitrate</div><div class="row-sub">Higher looks better, needs a stronger Wi-Fi</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><div class="seg" data-pref="bitrate"><button type="button" class="sg" data-v="4">4M</button><button type="button" class="sg on" data-v="8">8M</button><button type="button" class="sg" data-v="16">16M</button></div></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div class="row-text"><div class="row-label">Frame rate</div><div class="row-sub">Target framerate (FPS)</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><div class="seg" data-pref="fps"><button type="button" class="sg on" data-v="60">60</button><button type="button" class="sg" data-v="120">120</button></div></div>
+            </div>
+            <div class="sheet-label">Phone screen</div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4"/></svg></div><div class="row-text"><div class="row-label">Turn phone screen off</div><div class="row-sub">Toggle phone display live while keeping stream active</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><label class="switch"><input type="checkbox" data-pref="screenOff" /><span class="slider"></span></label></div>
+            </div>
+            <div class="sheet-label">Audio</div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/></svg></div><div class="row-text"><div class="row-label">Phone audio</div><div class="row-sub">Stream sound from phone to PC speakers</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><label class="switch"><input type="checkbox" data-pref="audioEnabled" checked /><span class="slider"></span></label></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg></div><div class="row-text"><div class="row-label">Audio buffer</div><div class="row-sub">Raise it if the sound crackles</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><div class="seg" data-pref="audioBuf"><button type="button" class="sg" data-v="40">40 ms</button><button type="button" class="sg on" data-v="120">120 ms</button><button type="button" class="sg" data-v="250">250 ms</button></div></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg></div><div class="row-text"><div class="row-label">Audio codec</div><div class="row-sub">Opus is high quality, AAC is widely compatible</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><div class="seg" data-pref="audioCodec"><button type="button" class="sg on" data-v="auto">Auto</button><button type="button" class="sg" data-v="opus">Opus</button><button type="button" class="sg" data-v="aac">AAC</button></div></div>
+            </div>
+            <div class="row">
+              <div class="row-left"><div class="ico"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg></div><div class="row-text"><div class="row-label">Also play on phone</div><div class="row-sub">Keep sound on the phone speaker too</div></div></div>
+              <div class="row-ctrl row-ctrl-inline"><label class="switch"><input type="checkbox" data-pref="audioDup" /><span class="slider"></span></label></div>
+            </div>
+          </div></div>
+      </section>
+
+      <!-- ═ SCREEN MIRROR · System ═ -->
+      <section id="page-scrcpy-system" class="page-section split">
+        <aside class="side"><div class="kicker">03</div><h1>Sys<em>tem</em></h1><p>Turn Screen Mirror on or off completely.</p></aside>
+        <div class="main"><div class="sheet" id="sys-scrcpy"></div></div>
+      </section>
+
     </div></main>
   </div>
 </div>
 
+<div class="comp-modal-backdrop" id="setup-modal" hidden>
+  <div class="comp-modal setup-modal" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+    <div class="comp-modal-head">
+      <div class="comp-modal-ico"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+      <div>
+        <h2 id="setup-title">Choose Your Nexus Modules</h2>
+        <p class="comp-modal-tag">Only selected modules stay active — unchecked ones use zero CPU and zero background threads</p>
+      </div>
+    </div>
+    <div class="comp-modal-body">
+      <div class="setup-grid">
+        <label class="setup-card selected">
+          <input type="checkbox" class="setup-mod-check" value="voice" checked />
+          <span class="setup-card-title">Voice Command &amp; AI</span>
+          <span class="setup-card-sub">Hands-free wake word, dictation, DPAPI keys &amp; local LLM fallback</span>
+        </label>
+        <label class="setup-card selected">
+          <input type="checkbox" class="setup-mod-check" value="search" checked />
+          <span class="setup-card-title">Circle to Search</span>
+          <span class="setup-card-sub">Freeze any screen region for offline OCR, translate, Lens &amp; music ID</span>
+        </label>
+        <label class="setup-card selected">
+          <input type="checkbox" class="setup-mod-check" value="companion" checked />
+          <span class="setup-card-title">Phone Link &amp; Gamepad</span>
+          <span class="setup-card-sub">Wireless 120Hz trackpad, clipboard sync, voice relay &amp; game controller</span>
+        </label>
+        <label class="setup-card">
+          <input type="checkbox" class="setup-mod-check" value="scrcpy" />
+          <span class="setup-card-title">Screen Mirror</span>
+          <span class="setup-card-sub">Mirror and control your Android phone over USB or Wi-Fi ADB</span>
+        </label>
+      </div>
+    </div>
+    <div class="comp-modal-foot">
+      <button type="button" class="btn" id="btn-setup-enable-all">Enable All</button>
+      <button type="button" class="btn setup-btn-primary" id="btn-setup-finish">Start with 3 modules</button>
+    </div>
+  </div>
+</div>
+
+<div class="comp-modal-backdrop" id="comp-term-modal" hidden>
+  <div class="comp-modal" role="dialog" aria-modal="true" aria-labelledby="comp-term-title">
+    <div class="comp-modal-head">
+      <div class="comp-modal-ico"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+      <div>
+        <h2 id="comp-term-title">Remote Terminal Security Policy</h2>
+        <p class="comp-modal-tag">High-Risk Permission · Explicit User Consent Required</p>
+      </div>
+    </div>
+    <div class="comp-modal-body">
+      <p>Enabling <b>Remote Terminal Access</b> allows your paired phone to execute arbitrary <b>Windows PowerShell</b> commands directly on this PC over local Wi-Fi.</p>
+      <ul class="comp-modal-list">
+        <li>Anything sent from the phone can read, modify, or permanently delete files, install software, or change system settings.</li>
+        <li>You are granted full control strictly at your own discretion. If anything unintended happens, you alone are responsible — Nexus and its developer hold zero liability.</li>
+      </ul>
+      <label class="comp-modal-check">
+        <input type="checkbox" id="comp-term-ack" />
+        <span>I have read this security policy and accept full responsibility for enabling PC Remote Terminal access.</span>
+      </label>
+    </div>
+    <div class="comp-modal-foot">
+      <button type="button" class="btn" id="btn-term-cancel">Cancel</button>
+      <button type="button" class="btn btn-danger" id="btn-term-grant" disabled>Grant Terminal Access</button>
+    </div>
+  </div>
+</div>
+
+<div class="comp-modal-backdrop" id="ai-term-modal" hidden>
+  <div class="comp-modal" role="dialog" aria-modal="true" aria-labelledby="ai-term-title">
+    <div class="comp-modal-head">
+      <div class="comp-modal-ico"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+      <div>
+        <h2 id="ai-term-title">AI Terminal Proposal Policy</h2>
+        <p class="comp-modal-tag">Strict Opt-In · Manual UI Approval Required</p>
+      </div>
+    </div>
+    <div class="comp-modal-body">
+      <p>Enabling <b>Allow AI Terminal Proposals</b> lets Nexus AI suggest single-line Windows PowerShell commands when fast local commands cannot handle a request.</p>
+      <ul class="comp-modal-list">
+        <li>Destructive commands (delete, format, registry deletion, diskpart) are strictly blocked.</li>
+        <li>AI can NEVER auto-execute shell commands from voice alone — every suggested command waits in <b>AI &amp; Keys</b> until you review it and click <b>Run</b>.</li>
+      </ul>
+      <label class="comp-modal-check">
+        <input type="checkbox" id="ai-term-ack" />
+        <span>I understand that I review and approve every command myself, and hold sole responsibility for anything executed.</span>
+      </label>
+    </div>
+    <div class="comp-modal-foot">
+      <button type="button" class="btn" id="btn-ai-term-cancel">Cancel</button>
+      <button type="button" class="btn btn-danger" id="btn-ai-term-grant" disabled>Enable Proposals</button>
+    </div>
+  </div>
+</div>
+
 <div class="save-toast" id="save-toast"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span id="save-toast-msg">Saved</span></div>
-<script src="settings.js"></script>
+<script type="module" src="main.ts"></script>
 </body>
 </html>

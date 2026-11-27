@@ -26,7 +26,7 @@ class Store(ctx: Context) {
         set(v) { p.edit().putFloat("speed", v).apply() }
 
     var padOn: Boolean
-        get() = p.getBoolean("pad_on", true)
+        get() = p.getBoolean("pad_on", false)
         set(v) { p.edit().putBoolean("pad_on", v).apply() }
 
     var mac: String
@@ -40,6 +40,18 @@ class Store(ctx: Context) {
     var autoKeyboard: Boolean
         get() = p.getBoolean("auto_keyboard", false)
         set(v) { p.edit().putBoolean("auto_keyboard", v).apply() }
+
+    var clipboardSync: Boolean
+        get() = p.getBoolean("clipboard_sync", false)
+        set(v) { p.edit().putBoolean("clipboard_sync", v).apply() }
+
+    var gpProfilesJson: String
+        get() = p.getString("gp_profiles_json", "") ?: ""
+        set(v) { p.edit().putString("gp_profiles_json", v).apply() }
+
+    var gpActiveProfileId: String
+        get() = p.getString("gp_active_profile", "preset_action") ?: "preset_action"
+        set(v) { p.edit().putString("gp_active_profile", v).apply() }
 
     val isPaired: Boolean get() = token.isNotEmpty() && ip.isNotEmpty()
 

@@ -15,6 +15,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
@@ -48,11 +57,12 @@ jobs:
             - **Windows Installer:** `Nexus___VERSION___x64-setup.exe` (or `.msi`)
             - **Android Companion App:** `NexusCompanion.apk`
 
-            ### Features:
-            - Ambient Voice wake word & desktop automation
-            - Nexus Companion Phone Link (120Hz Trackpad & Low-Latency Audio Streaming)
-            - Screen selection, OCR, Translate, Visual Lens & Music Finder (`Circle to Search`)
-            - Built-in signed auto-updater
+            ### Highlights:
+            - **100% Pure-Rust Native Screen Mirror**: End-to-end Win32 + Direct3D 11 (`ID3D11VideoProcessor`) + Windows Media Foundation H.264/AAC/Opus decoding and `cpal` WASAPI low-latency audio with auto-rotation, `F11` fullscreen, and live Phone Screen Off / Audio controls (zero external mirror executables or DLLs)
+            - **First-Run 4-Module Chooser & Low-Memory Tray Trim**: Pick enabled modules on first launch (`Voice`, `Circle to Search`, `Phone Link`, `Screen Mirror`) with zero background overhead for unchecked features
+            - **On-Demand Phone Link QR Pairing**: Generates pairing QR codes cleanly on click with full padding + instant sync
+            - **Voice AI Assistant (`Voice -> AI & Keys`)**: Optional smart fallback, DPAPI Multi-API Key Vault, natural talkback synced with Inex Island, and Gamepad Profile HUD
+            - *Notice:* Speech-to-text uses Google's unofficial Chromium v2 speech endpoint (see README for details & privacy notice).
           releaseDraft: false
           prerelease: false
 

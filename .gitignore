@@ -1,8 +1,17 @@
 # Rust & Tauri build targets
 target/
 src-tauri/target/
+mirror-engine/target/
 src-tauri/gen/
 dist/
+test-output/
+coverage/
+.vite/
+.vitest/
+*.tsbuildinfo
+
+# Local installer copies
+Nexus_*_x64*
 
 # Android build targets & caches
 .gradle/
@@ -25,16 +34,27 @@ yarn-error.log*
 *.key
 *.pem
 *.sig
+*.vault
+ai-keys.vault
+*.keystore
+*.jks
 nexus-settings.json
+gamepad-profiles*.json
 *.log
 *.tmp
 *.bak
 *.rs.bk
 
+# Android & release intermediates
+NexusCompanion/.kotlin/
+NexusCompanion/app/release/
+NexusCompanion.apk
+
 # Temporary / audio cache
 models/
 *.bin
 *.wav
+!src-tauri/assets/*.wav
 *.mp3
 
 # Windows OS metadata
@@ -50,3 +70,7 @@ $RECYCLE.BIN/
 *.swp
 *.swo
 .DS_Store
+
+# Local phone pairing data (private IP / device model)
+wireless_device.json
+*wireless_device.json

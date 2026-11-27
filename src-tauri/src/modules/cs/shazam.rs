@@ -266,7 +266,7 @@ pub fn build_shazam_signature(samples_16k: &[i16]) -> String {
 
     let mut bands: [Vec<FreqPeak>; 4] = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
 
-    for chunk in samples_16k.chunks_exact(128) {
+    for chunk in samples_16k.as_chunks::<128>().0 {
         // 1) Ring-buffer FFT every 128 new 16 kHz samples
         ring_buf[ring_idx..ring_idx + 128].copy_from_slice(chunk);
         ring_idx = (ring_idx + 128) & 2047;
@@ -481,18 +481,13 @@ pub fn is_generic_smtc_title(title: &str, artist: &str) -> bool {
             "instagram" | "tiktok" | "facebook" | "google chrome" | "chrome" | "microsoft edge" | "brave" | "firefox"
         );
 
-    if app_like_artist
+    app_like_artist
         && (GENERIC_NAMES.contains(&t.as_str())
             || t.starts_with("instagram")
             || t.starts_with("tiktok")
             || t.contains("on instagram")
             || t.ends_with("- instagram")
             || t.ends_with("| instagram"))
-    {
-        return true;
-    }
-
-    false
 }
 
 /// Checks Windows Active Media Session (SMTC) for currently playing audio metadata as a fallback.

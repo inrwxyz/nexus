@@ -289,19 +289,20 @@ fun TrackpadScreen(
                             value = textInput,
                             onValueChange = { newText ->
                                 val old = textInput
-                                when {
-                                    newText.length > old.length -> {
-                                        val added = newText.substring(old.length)
-                                        net.text(added)
-                                    }
-                                    newText.length < old.length -> {
-                                        val delCount = old.length - newText.length
-                                        repeat(delCount) { net.key("backspace") }
-                                    }
-                                    newText != old -> {
-                                        repeat(old.length) { net.key("backspace") }
-                                        net.text(newText)
-                                    }
+                                var prefix = 0
+                                val maxPrefix = minOf(old.length, newText.length)
+                                while (prefix < maxPrefix && old[prefix] == newText[prefix]) {
+                                    prefix++
+                                }
+                                if (prefix > 0 && Character.isHighSurrogate(old[prefix - 1])) {
+                                    prefix--
+                                }
+                                val delCount = if (prefix < old.length) {
+                                    Character.codePointCount(old, prefix, old.length)
+                                } else 0
+                                repeat(delCount) { net.key("backspace") }
+                                if (prefix < newText.length) {
+                                    net.text(newText.substring(prefix))
                                 }
                                 textInput = newText
                             },
@@ -456,6 +457,15 @@ fun TrackpadScreen(
             )
 
             // ── Floating controls in locked mode ──
+            if (!enabled) {
+                Text(
+                    "Touchpad is Off · Tap 'Off' above to turn on",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White.copy(alpha = 0.26f),
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+
             if (locked) {
                 Row(
                     Modifier

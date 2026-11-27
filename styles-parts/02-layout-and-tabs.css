@@ -1,0 +1,52 @@
+/* ── Window frame, sidebar rail & sub-navigation ───────────── */
+.win { position: absolute; inset: 0; display: flex; background: var(--bg); border-radius: 14px; border: 1px solid var(--line-hi); overflow: hidden; }
+.win.maxed { border-radius: 0; border: none; }
+
+.left { flex: 0 0 var(--left-w); display: flex; flex-direction: column; padding: 10px 0 10px 10px; min-height: 0; }
+.sidebar { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: stretch; margin: 0; padding: 8px 6px; background: var(--panel); border: 1px solid var(--line-hi); border-radius: 20px; }
+.brand { flex-shrink: 0; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 6px; height: 40px; padding: 0 2px 6px; }
+.brand-logo { flex-shrink: 0; width: 24px; height: 24px; border-radius: 6px; object-fit: cover; }
+.brand-name { font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1; letter-spacing: .02em; }
+
+.modules { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+.side-bottom { margin-top: auto; padding-top: 8px; }
+.mod {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  width: 100%; min-height: 54px; padding: 8px 2px; border-radius: 12px;
+  font-size: 10px; font-weight: 500; line-height: 1.2; text-align: center; color: var(--dim);
+  border: 1px solid transparent; transition: color .15s, background .15s, border-color .15s, transform .15s;
+}
+.mod svg { width: 18px; height: 18px; }
+.mod:hover { color: var(--text); background: var(--hover); transform: translateY(-1px); }
+.mod.active { color: var(--text); background: var(--accent-soft); border-color: var(--accent-line); transform: none; }
+.mod.active svg { color: var(--accent); }
+.mod.off { opacity: .45; }
+.mod.off.active { opacity: .8; }
+
+/* ── Content & Header ───────────────────────────────────────── */
+.content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+header { flex-shrink: 0; height: 64px; display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 0 10px 0 20px; -webkit-app-region: drag; }
+header button, header nav { -webkit-app-region: no-drag; }
+.hdr-spacer { height: 100%; }
+
+.subcol { position: absolute; left: 24px; top: 30px; z-index: 2; width: 130px; display: flex; flex-direction: column; gap: 14px; pointer-events: auto; }
+.modname { font-family: var(--serif); font-size: 22px; line-height: 1; color: var(--text); }
+.tabs { display: flex; flex-direction: column; gap: 9px; }
+.tab { display: flex; align-items: center; gap: 10px; padding: 2px 0; font-size: 13px; font-weight: 500; color: var(--dim); }
+.tab::before { content: ''; width: 14px; height: 1px; background: var(--line-hi); }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); }
+.tab.active::before { background: var(--accent); }
+
+.win-controls { justify-self: end; display: flex; align-items: center; gap: 2px; }
+.wc { width: 38px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--dim); transition: background .15s, color .15s; }
+.wc:hover { background: var(--hover); color: var(--text); }
+.wc-close:hover { background: #e5484d; color: #fff; }
+
+/* ── Stage & Page Switching ─────────────────────────────────── */
+.stage { position: relative; flex: 1; min-height: 0; }
+#page { position: absolute; inset: 0; padding: 0 20px 0 170px; overflow-y: auto; overflow-x: hidden; }
+#page.module-off .page-section:not([id$="-system"]) { opacity: .4; filter: saturate(.5); pointer-events: none; }
+#page.module-off .page-section[id$="-system"] .row:not(.mod-power-row) { opacity: .4; filter: saturate(.5); pointer-events: none; }
+.page-section { display: none; min-height: 100%; flex-direction: column; }
+.page-section.active { display: flex; }

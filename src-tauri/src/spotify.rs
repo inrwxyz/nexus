@@ -329,7 +329,6 @@ pub(crate) fn launch_spotify(query: Option<&str>) {
                 println!("❌ Spotify play hoy nai (upore NOTFOUND list dekho)");
             }
         });
-        return;
     } else {
         println!("🎵 Spotify: Opening & resuming playback via native GSMTC");
         if !spotify_open {
@@ -353,9 +352,6 @@ pub(crate) fn launch_spotify(query: Option<&str>) {
 }
 
 /// Find the best Spotify HWND using process scan
-
-#[allow(dead_code)]
-
 pub(crate) fn find_spotify_hwnd() -> Option<HWND> {
     // First try the normal list (fastest path)
 

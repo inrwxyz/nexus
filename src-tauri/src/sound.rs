@@ -22,7 +22,7 @@ pub fn synthesize_nexus_chime() -> Vec<u8> {
 
     for (freq, delay, vol, decay_rate) in notes {
         let start = (delay * sample_rate as f32) as usize;
-        for i in start..total_samples {
+        for (i, sample_out) in pcm.iter_mut().enumerate().take(total_samples).skip(start) {
             let offset = i - start;
             let t = offset as f32 / sample_rate as f32;
             let attack = if offset < attack_len {
@@ -32,7 +32,7 @@ pub fn synthesize_nexus_chime() -> Vec<u8> {
             };
             let decay = (-t * decay_rate).exp();
             let sig = (2.0 * std::f32::consts::PI * freq * t).sin();
-            pcm[i] += sig * vol * attack * decay;
+            *sample_out += sig * vol * attack * decay;
         }
     }
 
@@ -83,6 +83,20 @@ pub fn play_wake_chime() {
     unsafe {
         PlaySoundW(
             wav.as_ptr() as *const u16,
+            std::ptr::null_mut(),
+            SND_MEMORY | SND_ASYNC | SND_NODEFAULT,
+        );
+    }
+}
+
+static SCREENSHOT_SOUND_WAV: &[u8] = include_bytes!("../assets/screenshot.wav");
+
+/// Plays the Google Pixel camera shutter sound asynchronously without blocking.
+/// Zero runtime allocation / disk overhead (embedded directly in .rdata).
+pub fn play_screenshot_sound() {
+    unsafe {
+        PlaySoundW(
+            SCREENSHOT_SOUND_WAV.as_ptr() as *const u16,
             std::ptr::null_mut(),
             SND_MEMORY | SND_ASYNC | SND_NODEFAULT,
         );

@@ -83,7 +83,7 @@ fn prepare_ocr_buffer(w: u32, h: u32, bgra: &[u8]) -> (u32, u32, u32, u32, Vec<u
     for y in 0..(h as usize) {
         let src_row = &bgra[y * wu * 4..(y + 1) * wu * 4];
         let mut scaled_row = vec![0u8; s_w as usize * 4];
-        for (x, px) in src_row.chunks_exact(4).enumerate() {
+        for (x, px) in src_row.as_chunks::<4>().0.iter().enumerate() {
             for dx in 0..s {
                 let base = (x * s + dx) * 4;
                 scaled_row[base..base + 4].copy_from_slice(px);
@@ -183,7 +183,7 @@ fn sample_luma_stats(bgra: &[u8]) -> (usize, usize, usize) {
     let mut dark = 0usize;
     let mut bright = 0usize;
     let mut total = 0usize;
-    for px in bgra.chunks_exact(4).step_by(step) {
+    for px in bgra.as_chunks::<4>().0.iter().step_by(step) {
         let luma = (77u32 * px[2] as u32 + 150u32 * px[1] as u32 + 29u32 * px[0] as u32) >> 8;
         if luma < 110 {
             dark += 1;
@@ -205,7 +205,7 @@ fn build_smooth_dark_invert(bgra: &[u8]) -> Option<Vec<u8>> {
     }
 
     let mut out = vec![255u8; bgra.len()];
-    for (src, dst) in bgra.chunks_exact(4).zip(out.chunks_exact_mut(4)) {
+    for (src, dst) in bgra.as_chunks::<4>().0.iter().zip(out.as_chunks_mut::<4>().0.iter_mut()) {
         let luma = (77u32 * src[2] as u32 + 150u32 * src[1] as u32 + 29u32 * src[0] as u32) >> 8;
         let v = if luma <= 30 {
             255u8
@@ -231,7 +231,7 @@ fn build_smooth_bright_mask(bgra: &[u8]) -> Option<Vec<u8>> {
     }
 
     let mut out = vec![255u8; bgra.len()];
-    for (src, dst) in bgra.chunks_exact(4).zip(out.chunks_exact_mut(4)) {
+    for (src, dst) in bgra.as_chunks::<4>().0.iter().zip(out.as_chunks_mut::<4>().0.iter_mut()) {
         let luma = (77u32 * src[2] as u32 + 150u32 * src[1] as u32 + 29u32 * src[0] as u32) >> 8;
         let max_c = src[0].max(src[1]).max(src[2]);
         let min_c = src[0].min(src[1]).min(src[2]);
@@ -566,24 +566,25 @@ pub fn extract_text_offline(
 
     // Pass 2 & 3 (non-destructive smooth ramps): rescue muted grey dark-mode UI lines and
     // bright white labels on colored surfaces/wallpapers, adding ONLY non-overlapping missed boxes.
-    for rescue_opt in [build_smooth_dark_invert(bgra), build_smooth_bright_mask(bgra)] {
-        if let Some(rescue_src) = rescue_opt {
-            let (_, _, row, roh, rbuf) = prepare_ocr_buffer(w, h, &rescue_src);
-            if row == ow && roh == oh {
-                if let Ok(rbitmap) = build_software_bitmap(row, roh, &rbuf) {
-                    for engine in &engines {
-                        if let Ok((found, raw_txt)) = run_ocr_with_engine(
-                            engine, &rbitmap, scale_f, pad_f, w, h, bgra, origin_x, origin_y,
-                        ) {
-                            if fallback_res_text.is_empty() && !raw_txt.is_empty() {
-                                fallback_res_text = raw_txt;
-                            }
-                            let clean: Vec<OcrLineBox> = found
-                                .into_iter()
-                                .filter(|b| b.text.chars().filter(|c| c.is_alphanumeric()).count() >= 2)
-                                .collect();
-                            merge_best_boxes(&mut line_boxes, clean);
+    for rescue_src in [build_smooth_dark_invert(bgra), build_smooth_bright_mask(bgra)]
+        .into_iter()
+        .flatten()
+    {
+        let (_, _, row, roh, rbuf) = prepare_ocr_buffer(w, h, &rescue_src);
+        if row == ow && roh == oh {
+            if let Ok(rbitmap) = build_software_bitmap(row, roh, &rbuf) {
+                for engine in &engines {
+                    if let Ok((found, raw_txt)) = run_ocr_with_engine(
+                        engine, &rbitmap, scale_f, pad_f, w, h, bgra, origin_x, origin_y,
+                    ) {
+                        if fallback_res_text.is_empty() && !raw_txt.is_empty() {
+                            fallback_res_text = raw_txt;
                         }
+                        let clean: Vec<OcrLineBox> = found
+                            .into_iter()
+                            .filter(|b| b.text.chars().filter(|c| c.is_alphanumeric()).count() >= 2)
+                            .collect();
+                        merge_best_boxes(&mut line_boxes, clean);
                     }
                 }
             }
@@ -636,6 +637,7 @@ mod tests {
         assert_eq!(fg_d, "#f8fafc");
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_test_bgra(
         w: u32,
         h: u32,
@@ -664,7 +666,7 @@ mod tests {
             let dib = CreateDIBSection(dc, &bmi, DIB_RGB_COLORS, &mut bits, std::ptr::null_mut(), 0);
             let old = SelectObject(dc, dib as *mut _);
             let slice = std::slice::from_raw_parts_mut(bits as *mut u8, (w * h * 4) as usize);
-            for px in slice.chunks_exact_mut(4) {
+            for px in slice.as_chunks_mut::<4>().0 {
                 px[0] = bg_bgr[0];
                 px[1] = bg_bgr[1];
                 px[2] = bg_bgr[2];
@@ -768,7 +770,7 @@ mod tests {
         let left = render_test_bgra(340, 40, [250, 250, 250], 0x00111111, -18, 16, 10, "4096");
         let right = render_test_bgra(340, 40, [250, 250, 250], 0x00111111, -18, 250, 10, "5800");
         let mut combined = left;
-        for (dst, src) in combined.chunks_exact_mut(4).zip(right.chunks_exact(4)) {
+        for (dst, src) in combined.as_chunks_mut::<4>().0.iter_mut().zip(right.as_chunks::<4>().0.iter()) {
             if src[0] < dst[0] {
                 dst.copy_from_slice(src);
             }

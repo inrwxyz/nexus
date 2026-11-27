@@ -24,6 +24,23 @@ fn get_allowed_origin(request: &str) -> Option<&'static str> {
     Some("http://127.0.0.1:41780")
 }
 
+const DEFAULT_MAX_REQ_BYTES: usize = 65_536;
+const CLIPBOARD_MAX_REQ_BYTES: usize = 16 * 1024 * 1024;
+
+fn content_type_for_path(rel_path: &str) -> &'static str {
+    if rel_path.ends_with(".css") {
+        "text/css; charset=utf-8"
+    } else if rel_path.ends_with(".js") || rel_path.ends_with(".mjs") {
+        "application/javascript; charset=utf-8"
+    } else if rel_path.ends_with(".svg") {
+        "image/svg+xml"
+    } else if rel_path.ends_with(".png") {
+        "image/png"
+    } else {
+        "text/html; charset=utf-8"
+    }
+}
+
 pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
     thread::spawn(move || {
         let listener = loop {
@@ -39,17 +56,18 @@ pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
         };
 
         for stream in listener.incoming() {
-            if let Ok(mut stream) = stream {
-                let state_clone = settings_state.clone();
+            let Ok(mut stream) = stream else { continue };
+            let state_clone = settings_state.clone();
                 thread::spawn(move || {
                     stream
-                        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
                         .ok();
 
                     let mut raw_buf = Vec::with_capacity(4096);
-                    let mut chunk = [0u8; 4096];
+                    let mut chunk = [0u8; 8192];
                     let mut content_length: Option<usize> = None;
                     let mut header_end: Option<usize> = None;
+                    let mut max_req_bytes = DEFAULT_MAX_REQ_BYTES;
 
                     loop {
                         let n = match stream.read(&mut chunk) {
@@ -63,12 +81,23 @@ pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
                             if let Some(pos) = raw_buf.windows(4).position(|w| w == b"\r\n\r\n") {
                                 header_end = Some(pos + 4);
                                 let head_str = String::from_utf8_lossy(&raw_buf[..pos]);
+                                if head_str.starts_with("POST /api/companion/clipboard") {
+                                    max_req_bytes = CLIPBOARD_MAX_REQ_BYTES;
+                                }
                                 for line in head_str.lines() {
                                     let lower = line.to_ascii_lowercase();
                                     if let Some(val) = lower.strip_prefix("content-length:") {
                                         if let Ok(len) = val.trim().parse::<usize>() {
                                             content_length = Some(len);
                                         }
+                                    }
+                                }
+                                if let Some(len) = content_length {
+                                    if pos + 4 + len > max_req_bytes {
+                                        let _ = stream.write_all(
+                                            b"HTTP/1.1 413 Payload Too Large\r\nContent-Length: 17\r\nConnection: close\r\n\r\nPayload too large",
+                                        );
+                                        return;
                                     }
                                 }
                             }
@@ -81,15 +110,20 @@ pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
                             }
                         }
 
-                        if raw_buf.len() > 65536 {
-                            break;
+                        if raw_buf.len() > max_req_bytes {
+                            let _ = stream.write_all(
+                                b"HTTP/1.1 413 Payload Too Large\r\nContent-Length: 17\r\nConnection: close\r\n\r\nPayload too large",
+                            );
+                            return;
                         }
                     }
 
-                    let request = String::from_utf8_lossy(&raw_buf);
+                    let hend = header_end.unwrap_or(raw_buf.len());
+                    let head_str = String::from_utf8_lossy(&raw_buf[..hend]).into_owned();
+                    let body_bytes = if hend < raw_buf.len() { &raw_buf[hend..] } else { &[][..] };
 
                     // Handle CORS Preflight for Companion / Web API
-                    if request.starts_with("OPTIONS ") {
+                    if head_str.starts_with("OPTIONS ") {
                         let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization\r\nAccess-Control-Max-Age: 86400\r\nContent-Length: 0\r\n\r\n";
                         let _ = stream.write_all(resp.as_bytes());
                         return;
@@ -100,7 +134,7 @@ pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
                         .peer_addr()
                         .map(|a| a.ip().is_loopback())
                         .unwrap_or(false);
-                    if crate::companion::handle(&request, &mut stream, &state_clone, from_local) {
+                    if crate::companion::handle_bytes(&head_str, body_bytes, &mut stream, &state_clone, from_local) {
                         return;
                     }
 
@@ -114,7 +148,7 @@ pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
                     }
 
                     // ── Original Settings & Static Web API ───
-                    let allowed_origin = match get_allowed_origin(&request) {
+                    let allowed_origin = match get_allowed_origin(&head_str) {
                         Some(o) => o,
                         None => {
                             let _ = stream.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 17\r\n\r\nOrigin not allowed");
@@ -122,7 +156,7 @@ pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
                         }
                     };
 
-                    if request.starts_with("GET /api/settings") {
+                    if head_str.starts_with("GET /api/settings") {
                         let current = state_clone.lock().unwrap().clone();
                         let json = serde_json::to_string(&current).unwrap_or_default();
                         let response = format!(
@@ -132,22 +166,26 @@ pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
                             json
                         );
                         let _ = stream.write_all(response.as_bytes());
-                    } else if request.starts_with("POST /api/settings") {
-                        if let Some(pos) = request.find("\r\n\r\n") {
-                            let body = &request[pos + 4..];
-                            if let Ok(mut new_settings) = serde_json::from_str::<AuraSettings>(body) {
-                                save_settings(&mut new_settings);
-                                *state_clone.lock().unwrap() = new_settings.clone();
-                                crate::voice::set_listening_allowed(new_settings.module_should_run_now("voice"));
-                                crate::modules::circle_search::sync_with_settings(&new_settings, true);
-                                let resp = format!(
-                                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: {}\r\nContent-Length: 15\r\n\r\n{{\"status\":\"ok\"}}",
-                                    allowed_origin
-                                );
-                                let _ = stream.write_all(resp.as_bytes());
+                    } else if head_str.starts_with("POST /api/settings") {
+                        let body = String::from_utf8_lossy(body_bytes);
+                        if let Ok(mut new_settings) = serde_json::from_str::<AuraSettings>(&body) {
+                            {
+                                let current = state_clone.lock().unwrap();
+                                new_settings.preserve_companion_secrets(&current);
                             }
+                            save_settings(&mut new_settings);
+                            *state_clone.lock().unwrap() = new_settings.clone();
+                            crate::voice::set_listening_allowed(new_settings.module_should_run_now("voice"));
+                            crate::modules::circle_search::sync_with_settings(&new_settings, true);
+                            crate::modules::scrcpy::sync_with_settings(&new_settings);
+                            crate::gamepad::sync_with_settings(&new_settings);
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: {}\r\nContent-Length: 15\r\n\r\n{{\"status\":\"ok\"}}",
+                                allowed_origin
+                            );
+                            let _ = stream.write_all(resp.as_bytes());
                         }
-                    } else if request.starts_with("GET /lens-bridge") {
+                    } else if head_str.starts_with("GET /lens-bridge") {
                         let bridge_path = std::env::temp_dir().join("nexus_lens_bridge.html");
                         if let Ok(content) = std::fs::read(&bridge_path) {
                             let response = format!(
@@ -161,21 +199,27 @@ pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
                                 .write_all(b"HTTP/1.1 404 NOT FOUND\r\n\r\nLens Bridge Missing");
                         }
                     } else {
-                        // Serve static files
-                        let (file_name, content_type) = if request.starts_with("GET /settings.css")
-                        {
-                            ("settings.css", "text/css")
-                        } else if request.starts_with("GET /settings.js") {
-                            ("settings.js", "application/javascript")
-                        } else {
-                            ("settings.html", "text/html")
-                        };
+                        let req_path = head_str
+                            .lines()
+                            .next()
+                            .and_then(|l| l.split_whitespace().nth(1))
+                            .unwrap_or("/")
+                            .split('?')
+                            .next()
+                            .unwrap_or("/")
+                            .trim_start_matches('/');
+                        let rel = if req_path.is_empty() { "settings.html" } else { req_path };
+                        if rel.contains("..") {
+                            let _ = stream.write_all(b"HTTP/1.1 403 Forbidden\r\n\r\nInvalid path");
+                            return;
+                        }
+                        let content_type = content_type_for_path(rel);
 
-                        let mut path = PathBuf::from("ui").join(file_name);
+                        let mut path = PathBuf::from("ui").join(rel);
                         if !path.exists() {
                             if let Ok(mut exe) = std::env::current_exe() {
                                 exe.pop();
-                                path = exe.join("ui").join(file_name);
+                                path = exe.join("ui").join(rel);
                             }
                         }
 
@@ -193,7 +237,6 @@ pub fn start_server(settings_state: Arc<Mutex<AuraSettings>>) {
                         }
                     }
                 });
-            }
         }
     });
 }

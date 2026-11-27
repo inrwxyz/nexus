@@ -1,0 +1,124 @@
+/* Gamepad feature module UI styles */
+.gp-range { width: 120px; accent-color: var(--accent); cursor: pointer; }
+
+.gp-sheet-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 15px 18px 11px; border-bottom: 1px solid var(--line);
+}
+.gp-sheet-kicker {
+  font-size: 10px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: var(--dim);
+}
+.gp-sheet-hint { font-size: 11px; color: var(--faint); }
+
+.gp-profiles-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px; padding: 18px;
+}
+@media (max-width: 720px) {
+  .gp-profiles-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.gp-prof-card {
+  position: relative; display: flex; flex-direction: column; justify-content: space-between;
+  min-width: 0; min-height: 124px; padding: 11px 12px; border-radius: 12px; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--line); cursor: pointer; text-align: left;
+  transition: transform .15s, border-color .15s, background .15s, box-shadow .15s;
+}
+.gp-prof-card:hover {
+  transform: translateY(-2px); border-color: var(--line-hi); background: var(--hover);
+}
+.gp-prof-card.active {
+  border-color: var(--accent); background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent-line);
+}
+.gp-prof-card.disabled { opacity: .55; cursor: not-allowed; transform: none; }
+
+.gp-card-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+.gp-card-ico {
+  width: 30px; height: 30px; flex-shrink: 0; border-radius: 8px; display: grid; place-items: center;
+  background: var(--hover); border: 1px solid var(--line); color: var(--dim);
+  transition: color .15s, background .15s, border-color .15s;
+}
+.gp-card-ico svg { width: 15px; height: 15px; }
+.gp-prof-card.active .gp-card-ico {
+  color: var(--accent); background: var(--card); border-color: var(--accent-line);
+}
+.gp-card-tools { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.gp-card-dot {
+  font-family: var(--mono); font-size: 8.5px; font-weight: 700; letter-spacing: .06em;
+  padding: 2px 6px; border-radius: 5px; text-transform: uppercase;
+  background: var(--accent); color: #091016;
+}
+
+.gp-icon-btn {
+  width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; display: grid; place-items: center;
+  color: var(--dim); border: 1px solid transparent;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.gp-icon-btn:hover { color: var(--text); background: var(--card); border-color: var(--line-hi); }
+.gp-icon-btn.danger:hover {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.gp-card-mid { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; min-width: 0; }
+.gp-prof-name {
+  font-size: 11.5px; font-weight: 600; color: var(--text); line-height: 1.25;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gp-prof-sub {
+  font-size: 10px; color: var(--dim); line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.gp-card-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  margin-top: 10px; padding-top: 7px; border-top: 1px solid var(--line);
+  font-family: var(--mono); font-size: 9.5px; color: var(--faint);
+}
+.gp-prof-card.active .gp-card-foot { border-top-color: var(--accent-line); color: var(--accent); }
+.gp-chip {
+  font-size: 8.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+  padding: 2px 5px; border-radius: 4px; background: var(--hover); color: var(--dim);
+}
+.gp-prof-card.active .gp-chip { background: var(--card); color: var(--accent); }
+
+/* Gamepad inner sub-navigation inside Phone Link (mirrors Voice -> AI & Keys) */
+.gp-subnav {
+  display: flex; flex-direction: column; gap: 5px;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+}
+.gp-subtab {
+  display: flex; align-items: center; gap: 9px; padding: 8px 11px; border-radius: 10px;
+  font-size: 12px; font-weight: 500; color: var(--dim); border: 1px solid transparent;
+  background: transparent; text-align: left;
+  transition: background .14s, color .14s, border-color .14s;
+}
+.gp-subtab:hover { color: var(--text); background: var(--hover); }
+.gp-subtab.on { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-line); }
+.gp-subtab svg { flex-shrink: 0; }
+.gp-subcard { display: none; }
+.gp-subcard.on { display: block; }
+#page-companion-gamepad.gp-off .gp-subcard[data-gp-panel="overview"] .row:not(.gp-master-row),
+#page-companion-gamepad.gp-off .gp-subtab:not([data-gp-tab="overview"]) {
+  opacity: .42; pointer-events: none;
+}
+
+/* First-Run 4-Module Chooser Modal */
+.setup-modal { max-width: 560px; }
+.setup-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 4px;
+}
+.setup-card {
+  display: flex; flex-direction: column; gap: 5px; padding: 13px 14px; border-radius: 14px;
+  background: var(--panel); border: 1px solid var(--line); cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.setup-card:hover { border-color: var(--line-hi); background: var(--hover); }
+.setup-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.setup-card input { accent-color: var(--accent); width: 15px; height: 15px; margin-bottom: 2px; }
+.setup-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.setup-card-sub { font-size: 11px; line-height: 1.45; color: var(--dim); }
+.setup-btn-primary {
+  background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent);
+}

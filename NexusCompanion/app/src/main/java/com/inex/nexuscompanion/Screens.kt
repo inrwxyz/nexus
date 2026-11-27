@@ -1,10 +1,15 @@
 package com.inex.nexuscompanion
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.RepeatMode
@@ -12,6 +17,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,6 +44,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -47,6 +54,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -62,7 +70,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -86,9 +99,10 @@ fun App(store: Store, net: Net) {
     var paired by remember { mutableStateOf(store.isPaired) }
     var tab by remember { mutableIntStateOf(0) }
     var speed by remember { mutableFloatStateOf(store.speed) }
-    var padOn by remember { mutableStateOf(store.padOn) }
+    var padOn by remember { mutableStateOf(false) }
     var offline by remember { mutableStateOf(false) }
     var padLocked by remember { mutableStateOf(false) }
+    var confirmGamepadOpen by remember { mutableStateOf(false) }
     var mac by remember { mutableStateOf(store.mac) }
 
     DisposableEffect(net) {
@@ -112,11 +126,11 @@ fun App(store: Store, net: Net) {
         }
     }
 
-    val fullLock = padLocked && tab == 0
+    val fullLock = (padLocked && tab == 0) || tab == 4
     Column(
         Modifier
             .fillMaxSize()
-            .background(if (paired && tab == 0) Color.Black else cs.background)
+            .background(if (paired && (tab == 0 || tab == 4)) Color.Black else cs.background)
             .systemBarsPadding()
             .imePadding()
     ) {
@@ -156,14 +170,35 @@ fun App(store: Store, net: Net) {
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (tab) {
-                    0 -> TrackpadScreen(net, speed, padOn, padLocked, store.autoKeyboard, { padLocked = it }) { padOn = !padOn; store.padOn = padOn }
+                    0 -> TrackpadScreen(net, speed, padOn, padLocked, store.autoKeyboard, { padLocked = it }) { padOn = !padOn }
                     1 -> CommandScreen(net) { reachable -> offline = !reachable }
                     2 -> ControlScreen(net, store, offline) { offline = it }
+                    4 -> GameControllerScreen(store, net) { tab = 0 }
                     else -> SettingsScreen(store, net, speed, { speed = it; store.speed = it }) { paired = false }
                 }
             }
-            if (!fullLock) TabBar(tab) { tab = it }
+            if (!fullLock) TabBar(tab) { nextTab ->
+                if (nextTab == 4 && tab != 4) confirmGamepadOpen = true
+                else tab = nextTab
+            }
         }
+    }
+
+    if (confirmGamepadOpen) {
+        AlertDialog(
+            onDismissRequest = { confirmGamepadOpen = false },
+            title = { Text("Open Gamepad?") },
+            text = { Text("Switch to full-screen landscape controller HUD for PC gaming?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmGamepadOpen = false
+                    tab = 4
+                }) { Text("Open") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmGamepadOpen = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 
@@ -188,12 +223,18 @@ private fun PowerOnButton(onClick: () -> Unit) {
 @Composable
 private fun TabBar(selected: Int, onSelect: (Int) -> Unit) {
     val cs = MaterialTheme.colorScheme
-    val labels = listOf("Trackpad", "Command", "Control", "Settings")
+    val tabs = listOf(
+        0 to "Trackpad",
+        1 to "Command",
+        4 to "Gamepad",
+        2 to "Control",
+        3 to "Settings",
+    )
     val pillShape = CircleShape
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
             .clip(pillShape)
             .border(1.dp, cs.outline.copy(alpha = 0.35f), pillShape)
             .background(cs.surfaceContainerLow)
@@ -201,10 +242,10 @@ private fun TabBar(selected: Int, onSelect: (Int) -> Unit) {
     ) {
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
         ) {
-            labels.forEachIndexed { i, label ->
-                val on = i == selected
+            tabs.forEach { (tabIdx, label) ->
+                val on = tabIdx == selected
                 Box(
                     Modifier
                         .weight(1f)
@@ -219,12 +260,12 @@ private fun TabBar(selected: Int, onSelect: (Int) -> Unit) {
                                 Modifier.background(Color.Transparent)
                             }
                         )
-                        .plainClick { onSelect(i) },
+                        .plainClick { onSelect(tabIdx) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         label,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
                         color = if (on) cs.onSurface else cs.onSurfaceVariant,
                     )
@@ -277,6 +318,8 @@ fun PairScreen(store: Store, net: Net, onDone: () -> Unit) {
                 val udp = uri?.getQueryParameter("udp")?.toIntOrNull() ?: 41781
                 if (uri?.scheme == "nexus" && uri.host == "pair" && !ip.isNullOrBlank() && !key.isNullOrBlank()) {
                     doPair(ip, port, udp, key)
+                } else if ((b.rawValue ?: "").startsWith("WIFI:T:ADB")) {
+                    err = "This is a Wireless Debugging QR. Please scan from Phone Settings > Developer Options > Wireless Debugging > Pair device with QR code."
                 } else {
                     err = "This is not a Nexus pairing QR."
                 }
@@ -317,7 +360,11 @@ private val BUILT_IN = listOf(
     Cmd("Close Chrome"), Cmd("Close Spotify"),
     Cmd("Volume 20%", "sound audio"), Cmd("Volume 50%", "sound audio"), Cmd("Volume 100%", "sound audio"),
     Cmd("Mute PC", "volume sound audio"),
-    Cmd("Shutdown PC", "power off"), Cmd("Restart PC", "power reboot"), Cmd("Sleep PC", "power suspend"),
+    Cmd("Shutdown PC", "power off"), Cmd("Shutdown in 5 seconds", "power timer off"),
+    Cmd("Shutdown in 10 minutes", "power timer off"), Cmd("Shutdown in 30 minutes", "power timer off"),
+    Cmd("Shutdown in 1 hour", "power timer off"), Cmd("Cancel Shutdown", "abort power stop"),
+    Cmd("Restart PC", "power reboot"), Cmd("Restart in 5 minutes", "power timer reboot"),
+    Cmd("Sleep PC", "power suspend"),
     Cmd("Lock PC", "power"), Cmd("Show Desktop", "minimize"),
     Cmd("Spotify Pause", "music"), Cmd("Spotify Next", "music skip"),
 )
@@ -415,32 +462,69 @@ private fun AudioSwitcher(net: Net) {
 }
 
 @Composable
-private fun PrivateListen(net: Net) {
+private fun GoogleStyleMicButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     val cs = MaterialTheme.colorScheme
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var on by remember { mutableStateOf(net.audioPlayer.isPlaying) }
+    Box(
+        modifier
+            .size(92.dp)
+            .shadow(10.dp, CircleShape, ambientColor = Color(0xFF4285F4).copy(alpha = 0.25f), spotColor = Color(0xFF4285F4).copy(alpha = 0.25f))
+            .clip(CircleShape)
+            .background(cs.surfaceContainerHigh)
+            .border(1.dp, cs.outlineVariant.copy(alpha = 0.65f), CircleShape)
+            .plainClick(onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(40.dp)) {
+            val w = size.width
+            val h = size.height
+            val cx = w / 2f
+            val sw = w * 0.095f
 
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text("Listen on phone", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
-            Text("PC audio to your phone earphones", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            // Capsule head (Google Blue)
+            val capW = w * 0.27f
+            val capH = h * 0.44f
+            drawRoundRect(
+                color = Color(0xFF4285F4),
+                topLeft = Offset(cx - capW / 2f, h * 0.13f),
+                size = Size(capW, capH),
+                cornerRadius = CornerRadius(capW / 2f, capW / 2f),
+            )
+
+            // Circular U-cradle (Yellow left + Red bottom-right)
+            val arcR = w * 0.245f
+            val arcTop = h * 0.235f
+            val arcSize = Size(arcR * 2f, arcR * 2f)
+            val arcLeft = cx - arcR
+
+            drawArc(
+                color = Color(0xFFFBBC05),
+                startAngle = 132f,
+                sweepAngle = 48f,
+                useCenter = false,
+                topLeft = Offset(arcLeft, arcTop),
+                size = arcSize,
+                style = Stroke(width = sw, cap = StrokeCap.Round),
+            )
+            drawArc(
+                color = Color(0xFFEA4335),
+                startAngle = 0f,
+                sweepAngle = 136f,
+                useCenter = false,
+                topLeft = Offset(arcLeft, arcTop),
+                size = arcSize,
+                style = Stroke(width = sw, cap = StrokeCap.Round),
+            )
+
+            // Stem (Google Green)
+            val cradleBottom = arcTop + arcSize.height
+            drawLine(
+                color = Color(0xFF34A853),
+                start = Offset(cx, cradleBottom),
+                end = Offset(cx, h * 0.88f),
+                strokeWidth = sw,
+                cap = StrokeCap.Round,
+            )
         }
-        Switch(checked = on, onCheckedChange = { want ->
-            scope.launch {
-                if (want) {
-                    val rate = net.audioStream(true)
-                    if (rate != null) {
-                        net.audioPlayer.start(ctx, 41782, rate)
-                        on = true
-                    }
-                } else {
-                    net.audioPlayer.stop()
-                    net.audioStream(false)
-                    on = false
-                }
-            }
-        })
     }
 }
 
@@ -450,6 +534,17 @@ fun CommandScreen(net: Net, onReach: (Boolean) -> Unit) {
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf("") }
     val log = remember { mutableStateListOf<Pair<String, Reply>>() }
+    var terminalAvailable by remember { mutableStateOf(net.remoteTerminalEnabled) }
+    var terminalActive by remember { mutableStateOf(false) }
+    var confirmTerminal by remember { mutableStateOf(false) }
+    var shutdownTimerOpen by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val st = net.status()
+        onReach(st != PcState.Offline)
+        terminalAvailable = net.remoteTerminalEnabled
+        if (!terminalAvailable) terminalActive = false
+    }
 
     fun sendCmd(c: String) {
         val cmd = c.trim()
@@ -459,6 +554,11 @@ fun CommandScreen(net: Net, onReach: (Boolean) -> Unit) {
             onReach(reply != Reply.Offline)
             log.add(0, cmd to reply)
         }
+    }
+
+    if (terminalActive) {
+        RemoteTerminalView(net = net, onExit = { terminalActive = false })
+        return
     }
 
     val speech = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
@@ -476,15 +576,12 @@ fun CommandScreen(net: Net, onReach: (Boolean) -> Unit) {
     val suggestions = remember(text) { suggest(text) }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        Spacer(Modifier.height(16.dp))
-        // Minimal voice mic
-        Box(
-            Modifier.align(Alignment.CenterHorizontally).size(96.dp).clip(CircleShape)
-                .background(cs.surfaceContainerHigh).border(1.dp, cs.outlineVariant, CircleShape)
-                .plainClick { listen() },
-            contentAlignment = Alignment.Center,
-        ) { Text("🎤", fontSize = 36.sp) }
         Spacer(Modifier.height(20.dp))
+        GoogleStyleMicButton(
+            onClick = { listen() },
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+        )
+        Spacer(Modifier.height(22.dp))
 
         OutlinedTextField(
             value = text,
@@ -496,6 +593,54 @@ fun CommandScreen(net: Net, onReach: (Boolean) -> Unit) {
             keyboardActions = KeyboardActions(onSend = { sendCmd(text); text = "" }),
             modifier = Modifier.fillMaxWidth(),
         )
+
+        // Compact Shutdown Timer + optional Remote Terminal boxes below Type a command
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(cs.surfaceContainerLow)
+                .border(1.dp, cs.outlineVariant.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                .plainClick { shutdownTimerOpen = true }
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("⏱", fontSize = 15.sp)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "Shutdown Timer",
+                style = MaterialTheme.typography.labelLarge,
+                color = cs.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            Text("Schedule ›", style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
+        }
+
+        if (terminalAvailable) {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFFEF4444).copy(alpha = 0.10f))
+                    .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.32f), RoundedCornerShape(16.dp))
+                    .plainClick { confirmTerminal = true }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(">_", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Remote Terminal",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = cs.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Text("PowerShell ›", style = MaterialTheme.typography.labelSmall, color = Color(0xFFEF4444))
+            }
+        }
 
         // Live suggestions
         if (suggestions.isNotEmpty()) {
@@ -538,13 +683,39 @@ fun CommandScreen(net: Net, onReach: (Boolean) -> Unit) {
             }
         }
     }
+
+    if (shutdownTimerOpen) {
+        ShutdownTimerDialog(
+            onDismiss = { shutdownTimerOpen = false },
+            onSubmitCommand = { sendCmd(it) },
+        )
+    }
+
+    if (confirmTerminal) {
+        AlertDialog(
+            onDismissRequest = { confirmTerminal = false },
+            title = { Text("Allow Terminal Access?") },
+            text = { Text("Are you sure? Running terminal commands gives full PowerShell access on your PC. Pressing Back closes it immediately.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmTerminal = false
+                    terminalActive = true
+                }) { Text("Allow Access", color = Color(0xFFEF4444)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmTerminal = false }) { Text("Cancel") }
+            },
+        )
+    }
 }
 
 @Composable
 fun ControlScreen(net: Net, store: Store, offline: Boolean, onOfflineChange: (Boolean) -> Unit) {
     val cs = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var mac by remember { mutableStateOf(store.mac) }
+    var confirmShutdown by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -560,15 +731,6 @@ fun ControlScreen(net: Net, store: Store, offline: Boolean, onOfflineChange: (Bo
         ) {
             Text("Audio Output", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = cs.onSurface)
             AudioSwitcher(net)
-        }
-
-        // Wireless Audio Stream (Listen on Phone)
-        Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainerLow).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text("Wireless Audio", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = cs.onSurface)
-            PrivateListen(net)
         }
 
         // Wake-on-LAN and Power Control
@@ -611,16 +773,88 @@ fun ControlScreen(net: Net, store: Store, offline: Boolean, onOfflineChange: (Bo
                     }
                 }
             }
+
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFFEF4444).copy(alpha = 0.14f))
+                    .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                    .plainClick { confirmShutdown = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "⏻  Shut Down PC",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFEF4444),
+                )
+            }
         }
         Spacer(Modifier.height(16.dp))
+    }
+
+    if (confirmShutdown) {
+        val targetPc = store.pcName.ifEmpty { "your PC" }
+        AlertDialog(
+            onDismissRequest = { confirmShutdown = false },
+            title = { Text("Shut Down PC?") },
+            text = { Text("Are you sure you want to shut down $targetPc? (5s timer starts on PC)") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmShutdown = false
+                    scope.launch {
+                        val res = net.command("Shutdown PC")
+                        Toast.makeText(
+                            ctx,
+                            if (res == Reply.Done) "Shutting down $targetPc..." else "Could not reach PC",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                }) { Text("Shut Down", color = Color(0xFFEF4444)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmShutdown = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 
 @Composable
 fun SettingsScreen(store: Store, net: Net, speed: Float, onSpeed: (Float) -> Unit, onUnpaired: () -> Unit) {
     val cs = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var autoKey by remember { mutableStateOf(store.autoKeyboard) }
+    var clipSync by remember { mutableStateOf(store.clipboardSync) }
+    var bgEnabled by remember { mutableStateOf(ClipboardAccessibilityService.isEnabled(ctx)) }
+
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
+
+    LaunchedEffect(clipSync) {
+        bgEnabled = ClipboardAccessibilityService.isEnabled(ctx)
+    }
+
+    fun enableClipboardSync(on: Boolean) {
+        clipSync = on
+        store.clipboardSync = on
+        if (on) {
+            val missing = mutableListOf<String>()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
+                    missing += Manifest.permission.READ_MEDIA_IMAGES
+                }
+            } else if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                missing += Manifest.permission.READ_EXTERNAL_STORAGE
+            }
+            if (missing.isNotEmpty()) permLauncher.launch(missing.toTypedArray())
+            bgEnabled = ClipboardAccessibilityService.isEnabled(ctx)
+            scope.launch {
+                ClipboardSyncHelper.syncClipboardNow(ctx, store, net, force = true)
+            }
+        }
+    }
 
     Column(
         Modifier
@@ -687,6 +921,73 @@ fun SettingsScreen(store: Store, net: Net, speed: Float, onSpeed: (Float) -> Uni
                         store.autoKeyboard = it
                     }
                 )
+            }
+        }
+
+        // Phone Clipboard Sync (Zero-notification idle background sync)
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainerLow).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text("Clipboard Sync", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
+                    Text(
+                        "Sync copied text, links & screenshots to PC (no notification)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = cs.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = clipSync,
+                    onCheckedChange = { enableClipboardSync(it) },
+                )
+            }
+            if (clipSync) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        if (bgEnabled) "Idle auto-sync active (no battery drain)" else "Enable Accessibility for silent background sync",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (bgEnabled) Color(0xFF34C759) else cs.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (!bgEnabled) {
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(cs.primary)
+                                .plainClick {
+                                    ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                        ) {
+                            Text("Enable", style = MaterialTheme.typography.labelMedium, color = cs.onPrimary)
+                        }
+                    }
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(cs.surfaceContainerHigh)
+                            .plainClick {
+                                bgEnabled = ClipboardAccessibilityService.isEnabled(ctx)
+                                scope.launch {
+                                    val ok = ClipboardSyncHelper.syncClipboardNow(ctx, store, net, force = true)
+                                    Toast.makeText(
+                                        ctx,
+                                        if (ok) "Clipboard synced to PC" else "No text/link/image in clipboard",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text("Sync Now", style = MaterialTheme.typography.labelMedium, color = cs.onSurface)
+                    }
+                }
             }
         }
 

@@ -1,20 +1,25 @@
 #![windows_subsystem = "windows"]
 
+pub mod ai;
 pub mod app_launcher;
 pub mod audio_native;
 pub mod audio_switch;
-pub mod audio_stream;
+pub mod brightness;
+pub mod clipboard_sync;
 pub mod native_cmds;
 pub mod companion;
 pub mod engine;
 pub mod executor;
 pub mod file_search;
+pub mod gamepad;
 pub mod input;
 pub mod island_bridge;
 pub mod media_native;
 pub mod modules;
 pub mod pill;
+pub mod remote_terminal;
 pub mod safety;
+pub mod screenshot;
 pub mod server;
 pub mod settings;
 pub mod sound;
@@ -72,8 +77,51 @@ use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager,
+    AppHandle, Emitter, Manager, WebviewWindow,
 };
+
+#[cfg(target_os = "windows")]
+fn trim_working_set() {
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, SetProcessWorkingSetSize};
+    unsafe {
+        let _ = SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn trim_working_set() {}
+
+#[cfg(target_os = "windows")]
+fn set_webview_low_memory(window: &WebviewWindow, low: bool) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+        COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+    };
+    let _ = window.with_webview(move |wv| unsafe {
+        if let Ok(core) = wv.controller().CoreWebView2() {
+            if let Ok(wv19) = windows_core_062::Interface::cast::<ICoreWebView2_19>(&core) {
+                let level = if low {
+                    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+                } else {
+                    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+                };
+                let _ = wv19.SetMemoryUsageTargetLevel(level);
+            }
+        }
+    });
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_webview_low_memory(_window: &WebviewWindow, _low: bool) {}
+
+fn hide_settings_to_tray(window: &WebviewWindow) {
+    let _ = window.hide();
+    set_webview_low_memory(window, true);
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_millis(350));
+        trim_working_set();
+    });
+}
 
 pub static MIC_MUTED: AtomicBool = AtomicBool::new(false);
 static TRAY_MUTE_ITEM: Mutex<Option<tauri::menu::MenuItem<tauri::Wry>>> = Mutex::new(None);
@@ -92,8 +140,11 @@ fn show_settings_window(app: &AppHandle) {
         let current = state.lock().unwrap().clone();
         voice::set_listening_allowed(current.module_should_run_now("voice"));
         modules::circle_search::sync_with_settings(&current, true);
+        modules::scrcpy::sync_with_settings(&current);
+        gamepad::sync_with_settings(&current);
     }
     if let Some(w) = app.get_webview_window("main") {
+        set_webview_low_memory(&w, false);
         let _ = w.show();
 
         let _ = w.unminimize();
@@ -124,14 +175,24 @@ fn save_settings(
 ) -> bool {
     settings::unlock_boot();
     let mut normalized = new_settings;
+    {
+        let current = state.lock().unwrap();
+        normalized.preserve_companion_secrets(&current);
+    }
     if normalized.show_on_island && !island_bridge::is_inex_island_installed() {
         normalized.show_on_island = false;
     }
     settings::save_settings(&mut normalized);
 
     *state.lock().unwrap() = normalized.clone();
+    if !normalized.ai.enabled {
+        ai::clear_conversation();
+        ai::tts::stop();
+    }
     voice::set_listening_allowed(normalized.module_should_run_now("voice"));
     modules::circle_search::sync_with_settings(&normalized, true);
+    modules::scrcpy::sync_with_settings(&normalized);
+    gamepad::sync_with_settings(&normalized);
 
     true
 }
@@ -139,7 +200,7 @@ fn save_settings(
 #[tauri::command]
 fn close_settings(app: AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.hide();
+        hide_settings_to_tray(&w);
     }
 }
 
@@ -147,8 +208,16 @@ fn close_settings(app: AppHandle) {
 fn get_companion_pairing_info(
     state: tauri::State<Arc<Mutex<settings::AuraSettings>>>,
 ) -> serde_json::Value {
+    let s = state.lock().unwrap();
+    companion::pairing_info(&s)
+}
+
+#[tauri::command]
+fn generate_companion_qr(
+    state: tauri::State<Arc<Mutex<settings::AuraSettings>>>,
+) -> serde_json::Value {
     let mut s = state.lock().unwrap();
-    companion::pairing_info(&mut s)
+    companion::generate_pairing_qr(&mut s)
 }
 
 #[tauri::command]
@@ -276,6 +345,29 @@ fn main() {
         .any(|a| a == "--silent" || a == "--daemon" || a == "--autostart");
     settings::set_autostart_boot(is_silent_arg);
 
+    // At Windows login, wait until Explorer's taskbar exists (0ms wait when already booted)
+    // so tray icon, hotkeys, and WebView2 initialize cleanly.
+    if is_silent_arg {
+        let cls: Vec<u16> = "Shell_TrayWnd\0".encode_utf16().collect();
+        let mut waited_shell = false;
+        for _ in 0..16 {
+            let hwnd = unsafe {
+                windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW(
+                    cls.as_ptr(),
+                    std::ptr::null(),
+                )
+            };
+            if !hwnd.is_null() {
+                if waited_shell {
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+                break;
+            }
+            waited_shell = true;
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
+
     let settings_state = Arc::new(Mutex::new(settings::load_settings()));
 
     // Background voice engine is spawned inside setup with AppHandle
@@ -303,6 +395,7 @@ fn main() {
             save_settings,
             close_settings,
             get_companion_pairing_info,
+            generate_companion_qr,
             unpair_companion_device,
             check_update,
             apply_update,
@@ -320,14 +413,61 @@ fn main() {
             modules::circle_search::recognize_desktop_music,
             modules::circle_search::copy_circle_text,
             modules::circle_search::search_circle_text,
-            modules::circle_search::get_circle_search_status
+            modules::circle_search::get_circle_search_status,
+            modules::scrcpy::sc_devices,
+            modules::scrcpy::sc_connect,
+            modules::scrcpy::sc_remove_device,
+            modules::scrcpy::sc_make_permanent,
+            modules::scrcpy::sc_saved,
+            modules::scrcpy::sc_load_prefs,
+            modules::scrcpy::sc_save_prefs,
+            modules::scrcpy::sc_start,
+            modules::scrcpy::sc_live_update,
+            modules::scrcpy::sc_stop,
+            modules::scrcpy::sc_active,
+            modules::scrcpy::sc_qr_start,
+            modules::scrcpy::sc_qr_status,
+            modules::scrcpy::sc_qr_cancel,
+            modules::scrcpy::sc_kill_adb,
+            gamepad::get_gamepad_status,
+            gamepad::release_gamepad_inputs,
+            gamepad::get_gamepad_profiles,
+            gamepad::select_gamepad_profile,
+            gamepad::save_gamepad_profile,
+            gamepad::delete_gamepad_profile,
+            gamepad::reset_gamepad_preset,
+            gamepad::push_active_gamepad_profile,
+            ai::commands::ai_list_keys,
+            ai::commands::ai_add_key,
+            ai::commands::ai_remove_key,
+            ai::commands::ai_set_key_enabled,
+            ai::commands::ai_update_key_model,
+            ai::commands::ai_test_key,
+            ai::commands::ai_local_status,
+            ai::commands::ai_install_local_llm,
+            ai::commands::ai_pull_local_model,
+            ai::commands::ai_ask_text,
+            ai::commands::ai_clear_chat,
+            ai::commands::ai_list_proposals,
+            ai::commands::ai_approve_proposal,
+            ai::commands::ai_dismiss_proposal
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
             let sc = settings_state.clone();
             let initial_settings = sc.lock().unwrap().clone();
 
+            // Self-heal Windows Run + StartupApproved\Run on every start (fixes updates/cleaners).
+            let launch_on = initial_settings.launch_at_login;
+            std::thread::spawn(move || {
+                settings::apply_launch_at_login(launch_on);
+            });
+
             modules::circle_search::init(handle.clone(), &initial_settings);
+            modules::scrcpy::sync_with_settings(&initial_settings);
+            companion::set_app_handle(handle.clone());
+            gamepad::sync_with_settings(&initial_settings);
+            gamepad::profiles::start_auto_detector(handle.clone(), settings_state.clone());
 
             if initial_settings.auto_updater {
                 let handle_upd = handle.clone();
@@ -383,7 +523,11 @@ fn main() {
                     "toggle_mute" => {
                         let _ = toggle_mic_mute(app.clone());
                     }
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        gamepad::release_all();
+                        modules::scrcpy::sc_stop();
+                        app.exit(0);
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -416,7 +560,7 @@ fn main() {
 
             if is_silent {
                 if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.hide();
+                    hide_settings_to_tray(&w);
                 }
             } else {
                 show_settings_window(app.handle());
@@ -429,7 +573,9 @@ fn main() {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
 
-                    let _ = window.hide();
+                    if let Some(w) = window.app_handle().get_webview_window("main") {
+                        hide_settings_to_tray(&w);
+                    }
                 }
             }
         })

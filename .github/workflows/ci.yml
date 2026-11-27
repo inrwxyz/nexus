@@ -1,0 +1,46 @@
+name: 'CI'
+
+on:
+  push:
+    branches: ['main', 'master']
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: TypeScript Strict Check
+        run: npm run typecheck
+
+      - name: Vitest Unit Tests
+        run: npm test
+
+      - name: Frontend Production Build
+        run: npm run build:frontend
+
+      - name: Rust Unit Tests
+        run: |
+          cargo test --manifest-path mirror-engine/Cargo.toml
+          cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Rust Clippy (-D warnings)
+        run: |
+          cargo clippy --manifest-path mirror-engine/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings

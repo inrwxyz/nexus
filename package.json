@@ -1,14 +1,32 @@
 {
   "name": "nexus",
-  "version": "1.0.3",
+  "version": "2.0.1",
+  "type": "module",
   "description": "Nexus - Ambient Voice Automation",
   "main": "ui/settings.html",
   "scripts": {
     "tauri": "tauri",
-    "build": "cargo tauri build",
     "dev": "cargo tauri dev",
+    "dev:vite": "node scripts/build-styles.mjs && vite",
+    "build": "cargo tauri build",
+    "build:frontend": "node scripts/build-styles.mjs && vite build",
+    "build:styles": "node scripts/build-styles.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:golden": "npm run build:frontend && node scripts/golden-ui-harness.mjs --dist",
     "clean": "cargo clean --manifest-path src-tauri/Cargo.toml"
   },
   "author": "inrwxyz",
-  "license": "GPL-3.0"
+  "license": "GPL-3.0",
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "@types/pngjs": "^6.0.5",
+    "pixelmatch": "^8.0.0",
+    "playwright-core": "^1.65.1",
+    "pngjs": "^7.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.4.0",
+    "vitest": "^5.1.2"
+  }
 }

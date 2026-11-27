@@ -50,7 +50,6 @@ pub fn send_key(vk: u8) {
     }
 }
 
-#[allow(dead_code)]
 pub fn send_shift_key(vk: u8) {
     unsafe {
         let mut inputs = [
@@ -130,7 +129,7 @@ pub fn send_shift_key(vk: u8) {
 
 pub fn scroll(amount: i32) {
     unsafe {
-        let mut input = INPUT {
+        let input = INPUT {
             r#type: INPUT_MOUSE,
 
             Anonymous: INPUT_0 {
@@ -150,6 +149,6 @@ pub fn scroll(amount: i32) {
             },
         };
 
-        SendInput(1, &mut input, std::mem::size_of::<INPUT>() as i32);
+        SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
     }
 }

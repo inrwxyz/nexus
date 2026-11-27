@@ -24,7 +24,6 @@ pub fn is_listening_allowed() -> bool {
     LISTENING_ALLOWED.load(Ordering::SeqCst)
 }
 
-#[allow(dead_code)]
 pub struct Heard {
     pub text: String,
 
@@ -375,8 +374,14 @@ impl Voice {
         max_secs: f32,
 
         min_audio_secs: f32,
+
+        mut on_level: Option<&mut dyn FnMut(f32)>,
     ) -> Result<Option<Heard>, String> {
         let mut speech_started = false;
+
+        // live mic loudness (0..1) for the Island listening bars: sent ~20x/s, fast attack, soft release
+        let mut last_level_at = Instant::now();
+        let mut smoothed = 0.0f32;
 
         let mut last_voice_time = Instant::now();
 
@@ -410,6 +415,17 @@ impl Voice {
 
                 (sum_sq / slice.len() as f32).sqrt()
             };
+
+            if let Some(cb) = on_level.as_mut() {
+                if last_level_at.elapsed() >= Duration::from_millis(50) {
+                    last_level_at = Instant::now();
+                    let x = ((rms - self.threshold * 0.5) / (self.threshold * 10.0))
+                        .clamp(0.0, 1.0)
+                        .sqrt();
+                    smoothed = if x > smoothed { x } else { smoothed * 0.6 + x * 0.4 };
+                    cb(smoothed);
+                }
+            }
 
             if !speech_started {
                 if rms > self.threshold {
@@ -501,13 +517,21 @@ impl Voice {
     // Wake Word listener: 250ms silence cutoff catches multi-syllable wake words ("Jarvis", "Alexa", "Hey PC") cleanly
 
     pub fn wait_for_wake_word(&self) -> Result<Option<Heard>, String> {
-        self.listen_internal(250, 2.8, 0.14)
+        self.listen_internal(250, 2.8, 0.14, None)
     }
 
     // Command listener: responsive 550ms pause tolerance so users can speak naturally
 
     pub fn wait_for_command(&self) -> Result<Option<Heard>, String> {
-        self.listen_internal(550, 8.0, 0.22)
+        self.listen_internal(550, 8.0, 0.22, None)
+    }
+
+    // Same as wait_for_command, but reports the live mic loudness (0..1) while the user speaks
+    pub fn wait_for_command_with_level(
+        &self,
+        mut on_level: impl FnMut(f32),
+    ) -> Result<Option<Heard>, String> {
+        self.listen_internal(550, 8.0, 0.22, Some(&mut on_level))
     }
 
     // Default utterance listener

@@ -59,7 +59,7 @@ pub fn master(ch: Change) -> bool {
             match ch {
                 Change::ToggleMute => {
                     let m = vol.GetMute()?.as_bool();
-                    vol.SetMute(if m { false } else { true }, std::ptr::null())?;
+                    vol.SetMute(!m, std::ptr::null())?;
                 }
                 _ => {
                     let cur = vol.GetMasterVolumeLevelScalar()?;
@@ -101,7 +101,7 @@ pub fn app(targets: &[&str], ch: Change) -> bool {
                 match ch {
                     Change::ToggleMute => {
                         let m = sav.GetMute()?.as_bool();
-                        sav.SetMute(if m { false } else { true }, std::ptr::null())?;
+                        sav.SetMute(!m, std::ptr::null())?;
                     }
                     _ => {
                         let cur = sav.GetMasterVolume()?;

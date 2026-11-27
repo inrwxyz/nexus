@@ -36,7 +36,7 @@ fn reg_read_sz(root: HKEY, subkey: &str, value_name: Option<&str>) -> Option<Str
             RegCloseKey(hkey);
             return None;
         }
-        let mut buf = vec![0u16; (bytes as usize + 1) / 2];
+        let mut buf = vec![0u16; (bytes as usize).div_ceil(2)];
         let rc2 = RegQueryValueExW(
             hkey,
             val_ptr,

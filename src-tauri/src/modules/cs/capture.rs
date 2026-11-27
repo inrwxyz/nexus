@@ -91,7 +91,7 @@ impl FrozenFrame {
             let src = &self.bgra[src_start..src_start + row_bytes];
             let dst = &mut out[dst_start..dst_start + row_bytes];
             dst.copy_from_slice(src);
-            for px in dst.chunks_exact_mut(4) {
+            for px in dst.as_chunks_mut::<4>().0 {
                 px[3] = 255;
             }
         }
@@ -158,7 +158,7 @@ pub fn capture_active_monitor() -> Result<FrozenFrame, String> {
         }
 
         let old_obj = SelectObject(mem_dc, dib as *mut _);
-        let ok = BitBlt(
+        let mut ok = BitBlt(
             mem_dc,
             0,
             0,
@@ -169,6 +169,19 @@ pub fn capture_active_monitor() -> Result<FrozenFrame, String> {
             rect.top,
             SRCCOPY | CAPTUREBLT,
         );
+        if ok == 0 {
+            ok = BitBlt(
+                mem_dc,
+                0,
+                0,
+                width as i32,
+                height as i32,
+                screen_dc,
+                rect.left,
+                rect.top,
+                SRCCOPY,
+            );
+        }
         GdiFlush();
 
         let byte_len = width as usize * height as usize * 4;
@@ -202,7 +215,7 @@ pub fn capture_active_monitor() -> Result<FrozenFrame, String> {
 /// Encode opaque RGBA PNG bytes from top-down BGRA pixels.
 pub fn encode_png(w: u32, h: u32, bgra: &[u8]) -> Result<Vec<u8>, String> {
     let mut rgba = Vec::with_capacity(bgra.len());
-    for px in bgra.chunks_exact(4) {
+    for px in bgra.as_chunks::<4>().0 {
         rgba.push(px[2]); // R
         rgba.push(px[1]); // G
         rgba.push(px[0]); // B

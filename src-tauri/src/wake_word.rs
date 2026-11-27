@@ -51,7 +51,7 @@ pub fn norm(s: &str) -> String {
 pub fn strip_phrases(text: &str, phrases: &[&str]) -> String {
     let words: Vec<&str> = text.split_whitespace().collect();
     let mut ps: Vec<Vec<&str>> = phrases.iter().map(|p| p.split_whitespace().collect()).collect();
-    ps.sort_by(|a, b| b.len().cmp(&a.len()));
+    ps.sort_by_key(|a| std::cmp::Reverse(a.len()));
     let mut out: Vec<&str> = Vec::new();
     let mut i = 0;
     while i < words.len() {

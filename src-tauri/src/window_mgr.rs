@@ -9,7 +9,7 @@ use windows_sys::Win32::System::Threading::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindow, GetWindowLongW, GetWindowTextLengthW,
-    GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostMessageW,
+    GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
     SetForegroundWindow, ShowWindow, GWL_EXSTYLE, GW_OWNER, SW_MAXIMIZE, SW_MINIMIZE,
     SW_RESTORE, WM_CLOSE, WS_EX_TOOLWINDOW,
 };
@@ -201,12 +201,7 @@ pub fn window_action(action: &str, i: usize, wins: &[Win]) {
             }
 
             "focus" => {
-                if IsIconic(w.hwnd) != 0 {
-                    ShowWindow(w.hwnd, SW_RESTORE);
-                } else {
-                    ShowWindow(w.hwnd, SW_RESTORE);
-                }
-
+                ShowWindow(w.hwnd, SW_RESTORE);
                 SetForegroundWindow(w.hwnd);
             }
 
@@ -220,7 +215,7 @@ pub fn window_action(action: &str, i: usize, wins: &[Win]) {
 thread_local! {
     /// Phone relay sets this to true so an ambiguous app match auto-picks the best one
     /// (nobody can answer a console/voice prompt when the command comes from the phone).
-    pub static AUTO_PICK: std::cell::Cell<bool> = std::cell::Cell::new(false);
+    pub static AUTO_PICK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 pub fn resolve<F>(
@@ -405,8 +400,6 @@ where
 }
 
 // ---------- extract command from spoken text ----------
-
-#[allow(dead_code)]
 
 pub fn kill_processes_by_name(exe_name: &str) -> bool {
     crate::native_cmds::kill_by_name(exe_name)

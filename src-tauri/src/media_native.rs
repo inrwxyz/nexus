@@ -19,7 +19,6 @@ fn get_manager() -> Option<GlobalSystemMediaTransportControlsSessionManager> {
         .and_then(|op| op.get().ok())
 }
 
-#[allow(dead_code)]
 pub fn has_session(target_app: &str) -> bool {
     let manager = match get_manager() {
         Some(m) => m,
@@ -44,7 +43,6 @@ pub fn has_session(target_app: &str) -> bool {
     false
 }
 
-#[allow(dead_code)]
 pub fn is_playing(target_app: Option<&str>) -> bool {
     let manager = match get_manager() {
         Some(m) => m,

@@ -20,8 +20,8 @@ fn w(s: &str) -> Vec<u16> {
 /// Returns Some(result) if `l` (already lower-cased/normalised) is one of ours.
 pub fn try_handle(l: &str) -> Option<bool> {
     Some(match l {
-        "shutdown" | "shutdown pc" | "turn off pc" | "shut down pc" => shutdown(false),
-        "restart" | "restart pc" | "reboot" | "reboot pc" => shutdown(true),
+        "shutdown" | "shutdown pc" | "turn off pc" | "shut down pc" => shutdown_after(false, 5),
+        "restart" | "restart pc" | "reboot" | "reboot pc" => shutdown_after(true, 5),
         "cancel shutdown" | "abort shutdown" | "stop shutdown" => unsafe {
             enable_shutdown_priv();
             AbortSystemShutdownW(null()) != 0
@@ -51,11 +51,12 @@ unsafe fn enable_shutdown_priv() {
     CloseHandle(tok);
 }
 
-fn shutdown(reboot: bool) -> bool {
+pub fn shutdown_after(reboot: bool, delay_secs: u32) -> bool {
+    let secs = delay_secs.clamp(1, 604_800);
     unsafe {
         enable_shutdown_priv();
-        // 15s grace, same as before; "cancel shutdown" aborts it
-        InitiateSystemShutdownExW(null(), null(), 15, 0, reboot as i32, 0) != 0
+        // Grace timer in seconds (default 5s); "cancel shutdown" aborts it
+        InitiateSystemShutdownExW(null(), null(), secs, 0, reboot as i32, 0) != 0
     }
 }
 

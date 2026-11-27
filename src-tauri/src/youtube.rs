@@ -474,7 +474,7 @@ pub(crate) fn open_youtube_app(apps: &[App], url: Option<&str>) {
                 cmd.arg(format!("--app-launch-url-for-shortcuts-menu-item={target_url}"));
                 cmd.creation_flags(CREATE_NO_WINDOW);
                 let _ = cmd.spawn();
-            } else if chrome_exists { let mut cmd = Command::new(&chrome_path);
+            } else if chrome_exists { let mut cmd = Command::new(chrome_path);
                 if let Some(ref prof) = profile_arg {
                     cmd.arg(format!("--profile-directory={prof}"));
                 }
@@ -484,7 +484,7 @@ pub(crate) fn open_youtube_app(apps: &[App], url: Option<&str>) {
                 launch(yt);
             } else {
                 let _ = Command::new("explorer.exe")
-                    .arg(&target_url)
+                    .arg(target_url)
                     .spawn();
             }
 
@@ -528,7 +528,7 @@ pub(crate) fn open_youtube_app(apps: &[App], url: Option<&str>) {
             } else if chrome_exists {
                 println!("🚀 Launching YouTube App via Chrome...");
                 let profile_arg = yt_app.and_then(|a| get_chrome_profile_for_app(&a.id));
-                let mut cmd = Command::new(&chrome_path);
+                let mut cmd = Command::new(chrome_path);
                 if let Some(ref prof) = profile_arg {
                     cmd.arg(format!("--profile-directory={prof}"));
                 }

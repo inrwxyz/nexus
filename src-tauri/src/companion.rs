@@ -6,8 +6,10 @@
 use std::io::Write;
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+
+use tauri::{AppHandle, Emitter};
 
 use crate::app_launcher::{scan_apps, App};
 use crate::settings::{save_settings, AuraSettings};
@@ -20,6 +22,34 @@ const APP_CACHE_TTL: Duration = Duration::from_secs(600);
 
 static APP_CACHE: Mutex<Option<(Instant, Vec<App>)>> = Mutex::new(None);
 static REFRESHING: AtomicBool = AtomicBool::new(false);
+static LAST_PHONE_IP: Mutex<Option<String>> = Mutex::new(None);
+
+fn app_handle_slot() -> &'static Mutex<Option<AppHandle>> {
+    static APP: OnceLock<Mutex<Option<AppHandle>>> = OnceLock::new();
+    APP.get_or_init(|| Mutex::new(None))
+}
+
+pub fn set_app_handle(app: AppHandle) {
+    *app_handle_slot().lock().unwrap_or_else(|e| e.into_inner()) = Some(app);
+}
+
+pub fn emit_pairing_changed(s: &AuraSettings) {
+    if let Some(app) = app_handle_slot().lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        let _ = app.emit(
+            "companion-pairing-changed",
+            serde_json::json!({
+                "paired": s.companion.auth_token.is_some(),
+                "device": s.companion.paired_device,
+                "gamepad_enabled": crate::gamepad::is_enabled(),
+                "remote_terminal": s.module_enabled("companion") && s.companion.remote_terminal,
+            }),
+        );
+    }
+}
+
+pub fn get_last_phone_ip() -> Option<String> {
+    LAST_PHONE_IP.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
 
 // ───────────────────────── app list cache ─────────────────────────
 
@@ -84,17 +114,6 @@ fn key_is_valid(k: &str) -> bool {
     k.len() >= 16
 }
 
-fn ensure_key(s: &mut AuraSettings) {
-    if s.companion.auth_token.is_some() {
-        return;
-    }
-    let ok = s.companion.pairing_code.as_deref().map(key_is_valid).unwrap_or(false);
-    if !ok {
-        s.companion.pairing_code = Some(new_key());
-        save_settings(s);
-    }
-}
-
 pub fn local_ip() -> String {
     if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
         if socket.connect("8.8.8.8:80").is_ok() {
@@ -149,7 +168,7 @@ fn qr_svg(ip: &str, key: &str) -> String {
     match qrcode::QrCode::new(data.as_bytes()) {
         Ok(c) => c
             .render::<qrcode::render::svg::Color>()
-            .min_dimensions(200, 200)
+            .min_dimensions(180, 180)
             .quiet_zone(true)
             .dark_color(qrcode::render::svg::Color("#000000"))
             .light_color(qrcode::render::svg::Color("#ffffff"))
@@ -158,28 +177,38 @@ fn qr_svg(ip: &str, key: &str) -> String {
     }
 }
 
-/// Used by the settings UI (Tauri command and local HTTP status). Only what the UI needs.
-pub fn pairing_info(s: &mut AuraSettings) -> serde_json::Value {
-    ensure_key(s);
+/// Used by the settings UI to check pairing state without pre-generating a QR code.
+pub fn pairing_info(s: &AuraSettings) -> serde_json::Value {
     let paired = s.companion.auth_token.is_some();
-    let qr = if paired {
-        String::new()
-    } else {
-        qr_svg(&local_ip(), s.companion.pairing_code.as_deref().unwrap_or(""))
-    };
     serde_json::json!({
         "paired": paired,
         "device": s.companion.paired_device,
-        "qr_svg": qr,
     })
 }
 
-/// Revoke the phone's session and issue a fresh key.
+/// Generates a fresh one-time pairing code + QR SVG on explicit user click.
+pub fn generate_pairing_qr(s: &mut AuraSettings) -> serde_json::Value {
+    if s.companion.auth_token.is_some() {
+        return pairing_info(s);
+    }
+    let key = new_key();
+    s.companion.pairing_code = Some(key.clone());
+    save_settings(s);
+    serde_json::json!({
+        "paired": false,
+        "qr_svg": qr_svg(&local_ip(), &key),
+    })
+}
+
+/// Revoke the phone's session, push instant UDP disconnect to phone, suspend gamepad, and notify PC UI.
 pub fn revoke(s: &mut AuraSettings) {
+    let _ = crate::trackpad::push_udp_to_phone("{\"type\":\"unauthorized\"}");
     s.companion.auth_token = None;
     s.companion.paired_device = None;
     s.companion.pairing_code = Some(new_key());
     save_settings(s);
+    crate::gamepad::sync_with_settings(s);
+    emit_pairing_changed(s);
 }
 
 // ───────────────────────── HTTP helpers ─────────────────────────
@@ -204,20 +233,29 @@ fn body_of(request: &str) -> &str {
     request.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("")
 }
 
-fn bearer_token(request: &str) -> Option<String> {
-    let head = request.split("\r\n\r\n").next().unwrap_or(request);
+fn header_value<'a>(head: &'a str, name: &str) -> Option<&'a str> {
+    let head = head.split("\r\n\r\n").next().unwrap_or(head);
     for line in head.lines() {
         if let Some((k, v)) = line.split_once(':') {
-            if k.trim().eq_ignore_ascii_case("authorization") {
-                let v = v.trim();
-                let is_bearer = v.get(..7).map(|p| p.eq_ignore_ascii_case("bearer ")).unwrap_or(false);
-                if is_bearer {
-                    return Some(v[7..].trim().to_string());
-                }
+            if k.trim().eq_ignore_ascii_case(name) {
+                return Some(v.trim());
             }
         }
     }
     None
+}
+
+fn bearer_token(request: &str) -> Option<String> {
+    let v = header_value(request, "authorization")?;
+    let is_bearer = v
+        .get(..7)
+        .map(|p| p.eq_ignore_ascii_case("bearer "))
+        .unwrap_or(false);
+    if is_bearer {
+        Some(v[7..].trim().to_string())
+    } else {
+        None
+    }
 }
 
 fn token_matches(s: &AuraSettings, tok: &str) -> bool {
@@ -228,33 +266,51 @@ fn token_matches(s: &AuraSettings, tok: &str) -> bool {
 
 /// Returns true if the request was a /api/companion/* request (and has been answered).
 /// `from_local` = the TCP peer is this PC (settings UI); LAN peers get far less.
-pub fn handle(
-    request: &str,
+pub fn handle_bytes(
+    head: &str,
+    body: &[u8],
     stream: &mut TcpStream,
     state: &Arc<Mutex<AuraSettings>>,
     from_local: bool,
 ) -> bool {
-    let first = request.lines().next().unwrap_or("");
+    let first = head.lines().next().unwrap_or("");
     let mut parts = first.split_whitespace();
     let method = parts.next().unwrap_or("");
     let path = parts.next().unwrap_or("");
     if !path.starts_with("/api/companion/") {
         return false;
     }
+    if let Ok(peer) = stream.peer_addr() {
+        let ip = peer.ip().to_string();
+        if ip != "127.0.0.1" && !ip.starts_with("::1") {
+            *LAST_PHONE_IP.lock().unwrap_or_else(|e| e.into_inner()) = Some(ip);
+        }
+    }
     let route = path.split('?').next().unwrap_or(path);
+    let body_str = || String::from_utf8_lossy(body);
 
     match (method, route) {
-        ("GET", "/api/companion/status") => status(request, stream, state, from_local),
-        ("POST", "/api/companion/pair") => pair(request, stream, state),
-        ("POST", "/api/companion/unpair") => unpair(request, stream, state, from_local),
-        ("POST", "/api/companion/command") | ("POST", "/api/companion/voice") => {
-            command(request, stream, state)
+        ("GET", "/api/companion/status") => status(head, stream, state, from_local),
+        ("POST", "/api/companion/pair") => {
+            let full = format!("{head}\r\n\r\n{}", body_str());
+            pair(&full, stream, state)
         }
+        ("POST", "/api/companion/unpair") => unpair(head, stream, state, from_local),
+        ("POST", "/api/companion/command") | ("POST", "/api/companion/voice") => {
+            let full = format!("{head}\r\n\r\n{}", body_str());
+            command(&full, stream, state)
+        }
+        ("POST", "/api/companion/clipboard") => clipboard(head, body, stream, state),
+        ("POST", "/api/companion/terminal") => crate::remote_terminal::handle_http(head, body, stream, state),
         ("POST", "/api/companion/generate_code") => generate_code(stream, state, from_local),
-        ("GET", "/api/companion/audio/devices") => audio_devices(request, stream, state),
-        ("POST", "/api/companion/audio/switch") => audio_switch(request, stream, state),
-        ("GET", "/api/companion/audio/sessions") => audio_sessions(request, stream, state),
-        ("POST", "/api/companion/audio/stream") => audio_stream_ctl(request, stream, state),
+        ("GET", "/api/companion/audio/devices") => audio_devices(head, stream, state),
+        ("POST", "/api/companion/audio/switch") => {
+            let full = format!("{head}\r\n\r\n{}", body_str());
+            audio_switch(&full, stream, state)
+        }
+        ("GET", "/api/companion/audio/sessions") => audio_sessions(head, stream, state),
+        ("GET", "/api/companion/gamepad/profiles") => gamepad_profiles_get(head, stream, state),
+        ("POST", "/api/companion/gamepad/profile") => gamepad_profile_save(head, body, stream, state),
         _ => err(stream, 404, "Not Found", "Unknown companion endpoint"),
     }
     true
@@ -265,17 +321,14 @@ fn generate_code(stream: &mut TcpStream, state: &Arc<Mutex<AuraSettings>>, from_
         return err(stream, 403, "Forbidden", "Local only");
     }
     let mut s = state.lock().unwrap();
-    if s.companion.auth_token.is_none() {
-        s.companion.pairing_code = Some(new_key());
-        save_settings(&mut s);
-    }
+    let payload = generate_pairing_qr(&mut s);
     drop(s);
-    respond(stream, 200, "OK", serde_json::json!({ "status": "ok" }));
+    respond(stream, 200, "OK", payload);
 }
 
 fn status(request: &str, stream: &mut TcpStream, state: &Arc<Mutex<AuraSettings>>, from_local: bool) {
     let tok = bearer_token(request);
-    let mut s = state.lock().unwrap();
+    let s = state.lock().unwrap();
 
     if let Some(t) = tok {
         // Phone health check: one request when the app opens.
@@ -291,6 +344,9 @@ fn status(request: &str, stream: &mut TcpStream, state: &Arc<Mutex<AuraSettings>
             "pc_name": pc_name,
             "voice_relay": s.companion.voice_relay,
             "touchpad": s.companion.touchpad,
+            "remote_terminal": s.module_enabled("companion") && s.companion.remote_terminal,
+            "gamepad_enabled": s.module_should_run_now("gamepad") && s.module_should_run_now("companion") && s.companion.auth_token.is_some(),
+            "gamepad": s.gamepad,
             "udp_port": UDP_PORT,
             "mac": local_mac(),
         });
@@ -299,7 +355,7 @@ fn status(request: &str, stream: &mut TcpStream, state: &Arc<Mutex<AuraSettings>
     }
 
     if from_local {
-        let info = pairing_info(&mut s);
+        let info = pairing_info(&s);
         drop(s);
         return respond(stream, 200, "OK", info);
     }
@@ -341,6 +397,8 @@ fn pair(request: &str, stream: &mut TcpStream, state: &Arc<Mutex<AuraSettings>>)
     s.companion.paired_device = Some(device.clone());
     s.companion.pairing_code = None; // key is one-time
     save_settings(&mut s);
+    crate::gamepad::sync_with_settings(&s);
+    emit_pairing_changed(&s);
     drop(s);
 
     respond(
@@ -396,11 +454,19 @@ fn command(request: &str, stream: &mut TcpStream, state: &Arc<Mutex<AuraSettings
         return err(stream, 400, "Bad Request", "Empty command");
     }
 
-    if island {
+    let is_timer = crate::executor::is_timer_command(&cmd);
+    if island && !is_timer {
         crate::island_bridge::notify_thinking(Some(&cmd));
     }
+    let started = std::time::Instant::now();
     let success = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_command(&cmd))).unwrap_or(false);
-    if island {
+    if island && !is_timer {
+        // Give Island's 130ms enter transition time to settle before swapping to done/fail.
+        let elapsed = started.elapsed();
+        let min_hold = Duration::from_millis(220);
+        if elapsed < min_hold {
+            std::thread::sleep(min_hold - elapsed);
+        }
         crate::island_bridge::notify_done(success);
     }
 
@@ -440,26 +506,208 @@ fn audio_sessions(request: &str, stream: &mut TcpStream, state: &Arc<Mutex<AuraS
     respond(stream, 200, "OK", serde_json::json!({ "status": "ok", "sessions": v }));
 }
 
-/// POST {"action":"start","port":41782} | {"action":"stop"}. Audio goes to the caller's IP.
-fn audio_stream_ctl(request: &str, stream: &mut TcpStream, state: &Arc<Mutex<AuraSettings>>) {
-    if !authed(request, state) { return err(stream, 401, "Unauthorized", "Unauthorized"); }
-    #[derive(serde::Deserialize)]
-    struct Req { action: String, port: Option<u16> }
-    let r: Req = match serde_json::from_str(body_of(request)) {
-        Ok(r) => r,
-        Err(_) => return err(stream, 400, "Bad Request", "Malformed payload"),
+fn clipboard(head: &str, body: &[u8], stream: &mut TcpStream, state: &Arc<Mutex<AuraSettings>>) {
+    let tok = bearer_token(head).unwrap_or_default();
+    let (token_ok, companion_on) = {
+        let s = state.lock().unwrap();
+        (token_matches(&s, &tok), s.module_enabled("companion"))
     };
-    if r.action == "stop" {
-        crate::audio_stream::stop();
-        return respond(stream, 200, "OK", serde_json::json!({ "status": "ok" }));
+    if !token_ok {
+        return err(stream, 401, "Unauthorized", "Unauthorized");
     }
-    let peer = match stream.peer_addr() {
-        Ok(p) => p.ip(),
-        Err(_) => return err(stream, 500, "Error", "No peer"),
+    if !companion_on {
+        return err(stream, 403, "Forbidden", "Phone Link module is disabled on PC");
+    }
+
+    let ct = header_value(head, "content-type").unwrap_or("application/json");
+    let payload = match crate::clipboard_sync::parse_payload(ct, body) {
+        Ok(p) => p,
+        Err(msg) => return err(stream, 400, "Bad Request", &msg),
     };
-    let dst = std::net::SocketAddr::new(peer, r.port.unwrap_or(41782));
-    match crate::audio_stream::start(dst) {
-        Ok(rate) => respond(stream, 200, "OK", serde_json::json!({ "status": "ok", "rate": rate, "channels": 2 })),
-        Err(e) => err(stream, 500, "Error", &e),
+
+    match crate::clipboard_sync::apply_payload(&payload) {
+        Ok(kind) => {
+            println!("📋 Synced phone clipboard ({kind}, {} bytes)", body.len());
+            respond(stream, 200, "OK", serde_json::json!({ "status": "ok", "kind": kind }));
+        }
+        Err(msg) => err(stream, 500, "Internal Server Error", &msg),
+    }
+}
+
+fn gamepad_profiles_get(request: &str, stream: &mut TcpStream, state: &Arc<Mutex<AuraSettings>>) {
+    let tok = bearer_token(request).unwrap_or_default();
+    let (token_ok, allowed, auto_detect) = {
+        let s = state.lock().unwrap();
+        (
+            token_matches(&s, &tok),
+            s.module_enabled("companion") && s.module_enabled("gamepad"),
+            s.gamepad.auto_detect,
+        )
+    };
+    if !token_ok {
+        return err(stream, 401, "Unauthorized", "Unauthorized");
+    }
+    if !allowed {
+        return err(stream, 403, "Forbidden", "Game Controller is disabled on PC");
+    }
+    let snap = crate::gamepad::profiles::get_store_snapshot();
+    respond(
+        stream,
+        200,
+        "OK",
+        serde_json::json!({
+            "status": "ok",
+            "auto_detect": auto_detect,
+            "active_profile_id": snap.active_profile_id,
+            "detected_game": snap.detected_game,
+            "profiles": snap.profiles,
+        }),
+    );
+}
+
+fn gamepad_profile_save(
+    head: &str,
+    body: &[u8],
+    stream: &mut TcpStream,
+    state: &Arc<Mutex<AuraSettings>>,
+) {
+    let tok = bearer_token(head).unwrap_or_default();
+    let (token_ok, allowed) = {
+        let s = state.lock().unwrap();
+        (
+            token_matches(&s, &tok),
+            s.module_enabled("companion") && s.module_enabled("gamepad"),
+        )
+    };
+    if !token_ok {
+        return err(stream, 401, "Unauthorized", "Unauthorized");
+    }
+    if !allowed {
+        return err(stream, 403, "Forbidden", "Game Controller is disabled on PC");
+    }
+
+    #[derive(serde::Deserialize)]
+    struct SaveReq {
+        #[serde(default)]
+        make_active: Option<bool>,
+        #[serde(default)]
+        select_only: Option<bool>,
+        #[serde(default)]
+        profile_id: Option<String>,
+        profile: Option<crate::gamepad::profiles::GamepadProfile>,
+    }
+
+    let req: SaveReq = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(_) => return err(stream, 400, "Bad Request", "Malformed gamepad profile payload"),
+    };
+
+    if req.select_only.unwrap_or(false) {
+        if let Some(pid) = req.profile_id {
+            return match crate::gamepad::profiles::select_profile(&pid, false) {
+                Ok(snap) => respond(stream, 200, "OK", serde_json::json!({ "status": "ok", "active_profile_id": snap.active_profile_id, "profiles": snap.profiles })),
+                Err(msg) => err(stream, 404, "Not Found", &msg),
+            };
+        }
+    }
+
+    let Some(prof) = req.profile else {
+        return err(stream, 400, "Bad Request", "Missing profile");
+    };
+    let snap = crate::gamepad::profiles::upsert_profile(prof, req.make_active.unwrap_or(true), false);
+    respond(
+        stream,
+        200,
+        "OK",
+        serde_json::json!({
+            "status": "ok",
+            "active_profile_id": snap.active_profile_id,
+            "profiles": snap.profiles,
+        }),
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use std::net::TcpListener;
+
+    fn invoke_companion_http(head: &str, body: &[u8], settings: AuraSettings) -> (bool, String) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let client_handle = std::thread::spawn(move || {
+            let mut client = TcpStream::connect(addr).unwrap();
+            let mut out = String::new();
+            let _ = client.read_to_string(&mut out);
+            out
+        });
+
+        let (mut server_stream, _) = listener.accept().unwrap();
+        let state = Arc::new(Mutex::new(settings));
+        let handled = handle_bytes(head, body, &mut server_stream, &state, false);
+        drop(server_stream);
+        let resp = client_handle.join().unwrap();
+        (handled, resp)
+    }
+
+    #[test]
+    fn clipboard_endpoint_enforces_auth_module_gate_and_validation() {
+        let mut s = AuraSettings::default();
+        s.companion.auth_token = Some("tok-123".into());
+
+        // 1. Missing/bad token -> 401
+        let (ok, resp) = invoke_companion_http(
+            "POST /api/companion/clipboard HTTP/1.1\r\nContent-Type: application/json\r\n\r\n",
+            br#"{"kind":"text","text":"hello"}"#,
+            s.clone(),
+        );
+        assert!(ok);
+        assert!(resp.starts_with("HTTP/1.1 401"));
+
+        // 2. Valid token + companion module off -> 403
+        let mut disabled = s.clone();
+        disabled.modules.get_mut("companion").unwrap().enabled = false;
+        let (ok, resp) = invoke_companion_http(
+            "POST /api/companion/clipboard HTTP/1.1\r\nAuthorization: Bearer tok-123\r\nContent-Type: application/json\r\n\r\n",
+            br#"{"kind":"text","text":"hello"}"#,
+            disabled,
+        );
+        assert!(ok);
+        assert!(resp.starts_with("HTTP/1.1 403"));
+
+        // 3. Valid token + bad PNG -> 400
+        let (ok, resp) = invoke_companion_http(
+            "POST /api/companion/clipboard HTTP/1.1\r\nAuthorization: Bearer tok-123\r\nContent-Type: image/png\r\n\r\n",
+            b"bad-bytes",
+            s,
+        );
+        assert!(ok);
+        assert!(resp.starts_with("HTTP/1.1 400"));
+    }
+
+    #[test]
+    fn terminal_endpoint_is_disabled_by_default_and_checks_token() {
+        let mut s = AuraSettings::default();
+        s.companion.auth_token = Some("tok-123".into());
+        assert!(!s.companion.remote_terminal);
+
+        // Unauthorized -> 401
+        let (ok, resp) = invoke_companion_http(
+            "POST /api/companion/terminal HTTP/1.1\r\nContent-Type: application/json\r\n\r\n",
+            br#"{"command":"echo hi"}"#,
+            s.clone(),
+        );
+        assert!(ok);
+        assert!(resp.starts_with("HTTP/1.1 401"));
+
+        // Valid token, default remote_terminal=false -> 403
+        let (ok, resp) = invoke_companion_http(
+            "POST /api/companion/terminal HTTP/1.1\r\nAuthorization: Bearer tok-123\r\nContent-Type: application/json\r\n\r\n",
+            br#"{"command":"echo hi"}"#,
+            s,
+        );
+        assert!(ok);
+        assert!(resp.starts_with("HTTP/1.1 403"));
     }
 }

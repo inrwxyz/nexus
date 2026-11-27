@@ -3,4 +3,5 @@
     <string name="shortcut_voice">Voice command</string>
     <string name="voice_label">Nexus Voice</string>
     <string name="shortcut_voice_long">Send a voice command to your PC</string>
+    <string name="clipboard_service_desc">Idle event-driven listener that syncs copied text, links and screenshots to your paired Nexus PC without showing any persistent notification.</string>
 </resources>

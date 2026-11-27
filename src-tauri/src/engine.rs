@@ -2,6 +2,7 @@ use std::sync::{atomic::Ordering, Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
+use crate::ai;
 use crate::app_launcher::scan_apps;
 use crate::executor::execute_command;
 use crate::island_bridge;
@@ -12,6 +13,72 @@ use crate::vocab::{load_aliases, load_vocab};
 use crate::voice;
 use crate::wake_word::extract_command;
 use crate::MIC_MUTED;
+
+#[allow(clippy::too_many_arguments)]
+fn dispatch_heard_command(
+    raw_cmd: &str,
+    settings_state: &Arc<Mutex<settings::AuraSettings>>,
+    vocab: &crate::vocab::Vocab,
+    apps: &mut [crate::app_launcher::App],
+    aliases: &mut std::collections::HashMap<String, String>,
+    v: &voice::Voice,
+    pill: &pill::CornerPill,
+    show_pill: bool,
+    island_enabled: bool,
+    app: &AppHandle,
+) {
+    let ai_cfg = settings_state.lock().unwrap().ai.clone();
+
+    if let Some(ok) = ai::try_voice_dictation(&ai_cfg, raw_cmd, pill, show_pill, app) {
+        if island_enabled {
+            island_bridge::notify_done(ok);
+        }
+        return;
+    }
+
+    let res = execute_command(raw_cmd, vocab, apps, aliases, Some(v));
+    if res {
+        if island_enabled {
+            island_bridge::notify_done(true);
+        } else if show_pill {
+            pill.show_action(raw_cmd, true);
+        }
+        let _ = app.emit(
+            "voice-event",
+            serde_json::json!({
+                "type": "action",
+                "text": format!("Action: \"{}\" (Success)", raw_cmd),
+                "status": "Completed"
+            }),
+        );
+        ai::maybe_speak_fast_ack(&ai_cfg, raw_cmd);
+        return;
+    }
+
+    if ai_cfg.enabled {
+        let ai_ok = ai::handle_voice_fallback(
+            &ai_cfg, raw_cmd, vocab, apps, aliases, Some(v), pill, show_pill, island_enabled, app,
+        );
+        if island_enabled {
+            island_bridge::notify_done(ai_ok);
+        }
+        return;
+    }
+
+    if island_enabled {
+        island_bridge::notify_done(false);
+    } else if show_pill {
+        pill.show_action(raw_cmd, false);
+    }
+    let _ = app.emit(
+        "voice-event",
+        serde_json::json!({
+            "type": "action",
+            "text": format!("Action: \"{}\" (Failed)", raw_cmd),
+            "status": "Unknown"
+        }),
+    );
+}
 
 pub fn start_voice_engine(settings_state: Arc<Mutex<settings::AuraSettings>>, app: AppHandle) {
     let vocab = load_vocab();
@@ -97,12 +164,18 @@ pub fn start_voice_engine(settings_state: Arc<Mutex<settings::AuraSettings>>, ap
 
                             v.reset_buffers();
 
-                            if let Ok(Some(next_heard)) = v.wait_for_command() {
+                            let next_heard_res = if island_enabled {
+                                v.wait_for_command_with_level(island_bridge::notify_level)
+                            } else {
+                                v.wait_for_command()
+                            };
+
+                            if let Ok(Some(next_heard)) = next_heard_res {
                                 let next_cmd = next_heard.text.trim();
 
                                 if !next_cmd.is_empty() {
                                     if island_enabled {
-                                        island_bridge::notify_thinking(Some(next_cmd));
+                                        island_bridge::notify_thinking(None);
                                     } else if show_pill {
                                         pill.show_speech(next_cmd);
                                     }
@@ -116,27 +189,18 @@ pub fn start_voice_engine(settings_state: Arc<Mutex<settings::AuraSettings>>, ap
                                         }),
                                     );
 
-                                    std::thread::sleep(Duration::from_millis(500));
-
-                                    let res = execute_command(
+                                    dispatch_heard_command(
                                         next_cmd,
+                                        &settings_state,
                                         &vocab,
                                         &mut apps,
                                         &mut aliases,
-                                        Some(&v),
+                                        &v,
+                                        &pill,
+                                        show_pill,
+                                        island_enabled,
+                                        &app,
                                     );
-
-                                    if island_enabled {
-                                        island_bridge::notify_done(res);
-                                    } else if show_pill {
-                                        pill.show_action(next_cmd, res);
-                                    }
-
-                                    let _ = app.emit("voice-event", serde_json::json!({
-                                        "type": "action",
-                                        "text": format!("Action: \"{}\" ({})", next_cmd, if res { "Success" } else { "Failed" }),
-                                        "status": if res { "Completed" } else { "Unknown" }
-                                    }));
                                 } else {
                                     if island_enabled { island_bridge::notify_cancel(); }
                                     else if show_pill { pill.hide(); }
@@ -149,7 +213,7 @@ pub fn start_voice_engine(settings_state: Arc<Mutex<settings::AuraSettings>>, ap
                             sound::play_wake_chime();
 
                             if island_enabled {
-                                island_bridge::notify_thinking(Some(&cmd));
+                                island_bridge::notify_thinking(None);
                             } else if show_pill {
                                 pill.show_speech(&cmd);
                             } else {
@@ -165,21 +229,18 @@ pub fn start_voice_engine(settings_state: Arc<Mutex<settings::AuraSettings>>, ap
                                 }),
                             );
 
-                            std::thread::sleep(Duration::from_millis(500));
-
-                            let res = execute_command(&cmd, &vocab, &mut apps, &mut aliases, Some(&v));
-
-                            if island_enabled {
-                                island_bridge::notify_done(res);
-                            } else if show_pill {
-                                pill.show_action(&cmd, res);
-                            }
-
-                            let _ = app.emit("voice-event", serde_json::json!({
-                                "type": "action",
-                                "text": format!("Action: \"{}\" ({})", cmd, if res { "Success" } else { "Failed" }),
-                                "status": if res { "Completed" } else { "Unknown" }
-                            }));
+                            dispatch_heard_command(
+                                &cmd,
+                                &settings_state,
+                                &vocab,
+                                &mut apps,
+                                &mut aliases,
+                                &v,
+                                &pill,
+                                show_pill,
+                                island_enabled,
+                                &app,
+                            );
                         }
                     }
                 }
